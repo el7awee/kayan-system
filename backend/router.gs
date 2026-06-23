@@ -225,6 +225,12 @@ function routeRequest(e, method, userId, userRole) {
       case 'getTripExpenses':
         resultPayload = expenseService_getTripExpenses(ss, e.parameter);
         break;
+      case 'getDashboard':
+        resultPayload = aggregateService_getDashboard(ss, e, realUserId);
+        break;
+      case 'getLookups':
+        resultPayload = aggregateService_getLookups(ss);
+        break;
       case 'settleTripFinancials':
         resultPayload = accountingService_settleTrip(e, realUserId);
         break;
@@ -667,20 +673,23 @@ function accountingService_settleTrip(e, uid) {
     }
   }
 
-  let remainingAdvance = advanceCash - totalExpenses;
+  // المتبقّي الحقيقي = إجمالي العهدة اللي السائق ماسكها فعلًا الآن
+  // (بتشمل المترحّل من رحلات سابقة، وبتكون صافية بعد خصم كل المصاريف لأن كل مصروف بيتخصم من عهدة السائق وقت تسجيله)
+  let driverCustody = driverId ? driverService_getDriverAdvance(driverId) : 0;
+  let remainingAdvance = driverCustody;
   let carriedOver = 0;
   let settlementStatus = "";
 
   if (settlementType === "RETURNED") {
-    // السائق يرجّع المتبقّي للمحاسب
+    // السائق يسلّم كل اللي معاه للمحاسب → عهدته تبقى صفر، والمبلغ يدخل عهدة المحاسب
     if (remainingAdvance !== 0 && driverId) {
-      driverService_updateDriverAdvance(driverId, -remainingAdvance, uid, `تصفية عهدة الرحلة ${tripId} - رجوع المتبقّي`);
-      balanceService_updateBalance(uid, remainingAdvance, 'ADD', driverId, tripId, `استلام متبقّي عهدة الرحلة ${tripId} من السائق`, uid);
+      driverService_updateDriverAdvance(driverId, -remainingAdvance, uid, `تصفية وإغلاق الرحلة ${tripId} - تسليم كامل العهدة للمحاسب`);
+      balanceService_updateBalance(uid, remainingAdvance, 'ADD', driverId, tripId, `استلام عهدة السائق عند تصفية الرحلة ${tripId}`, uid);
     }
     settlementStatus = "FULLY_SETTLED";
     carriedOver = 0;
   } else {
-    // ترحيل المتبقّي مع السائق للرحلة الجاية (عهدة السائق متغيّرتش)
+    // ترحيل: المتبقّي يفضل مع السائق كعهدة للرحلة الجاية (عهدته متغيّرتش)
     settlementStatus = "CARRIED_OVER";
     carriedOver = remainingAdvance;
   }
@@ -710,8 +719,44 @@ function accountingService_settleTrip(e, uid) {
     "data": {
       "advance_cash": advanceCash,
       "total_expenses": totalExpenses,
+      "driver_custody": driverCustody,
       "remaining_advance": remainingAdvance,
+      "carried_over": carriedOver,
       "settlement_type": settlementType
+    }
+  };
+}
+
+/**
+ * ─── نقاط تجميع لتقليل عدد الطلبات (أداء) ───
+ * بدل ما الواجهة تبعت 5-9 طلبات منفصلة، تبعت طلب واحد يرجّع كل اللازم.
+ */
+function _extractData(res) {
+  if (res && typeof res === "object" && "data" in res) return res.data;
+  return res;
+}
+
+function aggregateService_getDashboard(ss, e, userId) {
+  return {
+    "success": true,
+    "data": {
+      "trips": _extractData(tripService_getTrips(e)) || [],
+      "fuel": _extractData(fuelService_getBalance(ss)) || {},
+      "my_balance": _extractData(balanceService_getUserBalance(userId)) || {},
+      "notifications": _extractData(notificationService_getNotifications(ss, userId)) || {},
+      "monthly_expenses": _extractData(expenseService_getMonthlyExpenses(ss)) || {}
+    }
+  };
+}
+
+function aggregateService_getLookups(ss) {
+  return {
+    "success": true,
+    "data": {
+      "clients": _extractData(clientService_getClients(ss)) || [],
+      "drivers": _extractData(driverService_getDrivers(ss)) || [],
+      "vehicles": _extractData(vehicleService_getVehicles(ss)) || [],
+      "fuel": _extractData(fuelService_getBalance(ss)) || {}
     }
   };
 }

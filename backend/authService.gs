@@ -212,6 +212,19 @@ function authService_validateToken(token, userId) {
     return { valid: false, message: "توكن الجلسة مفقود." };
   }
   
+  // كاش قصير المدى للتوكن (60 ثانية) لتجنّب قراءة شيت المستخدمين بالكامل مع كل طلب
+  let cache = CacheService.getScriptCache();
+  let cacheKey = "tokv_" + token;
+  let cachedRaw = cache.get(cacheKey);
+  if (cachedRaw) {
+    try {
+      let cachedObj = JSON.parse(cachedRaw);
+      if (!userId || cachedObj.user_id === userId) {
+        return cachedObj;
+      }
+    } catch (err) { /* تجاهل الكاش التالف وأعد القراءة من الشيت */ }
+  }
+  
   let ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Users");
   if (!sheet) {
@@ -246,13 +259,15 @@ function authService_validateToken(token, userId) {
         return { valid: false, message: "التوكن غير صالح." };
       }
       
-      return {
+      let okResult = {
         valid: true,
         user_id: dbUserId,
         full_name: data[i][1],
         username: data[i][2],
         role: data[i][4]
       };
+      cache.put(cacheKey, JSON.stringify(okResult), 60);
+      return okResult;
     }
   }
   
@@ -268,6 +283,10 @@ function authService_logout(userId) {
   
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === userId) {
+      let oldToken = data[i][9] || "";
+      if (oldToken) {
+        CacheService.getScriptCache().remove("tokv_" + oldToken);
+      }
       sheet.getRange(i + 1, 10).setValue("");
       sheet.getRange(i + 1, 11).setValue("");
       break;

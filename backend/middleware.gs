@@ -16,7 +16,7 @@ const ROLE_PERMISSIONS = {
     // القديمة
     'getTrips', 'getDrivers', 'createTrip', 'updateTripStatus', 
     'addExpense', 'settleTripFinancials', 'updateDriver', 'updateVehicle',
-    'getTripExpenses',
+    'getTripExpenses', 'getDashboard', 'getLookups',
     'createUser', 'getUsers', 'toggleUserStatus', 'updateUserRole', 
     'deleteUser', 'resetUserPassword', 'viewAuditLog', 'logout',
     // العربيات
@@ -43,7 +43,7 @@ const ROLE_PERMISSIONS = {
     // القديمة
     'getTrips', 'getDrivers', 'createTrip', 'updateTripStatus', 
     'addExpense', 'settleTripFinancials', 'updateDriver', 'updateVehicle',
-    'getTripExpenses',
+    'getTripExpenses', 'getDashboard', 'getLookups',
     'getUsers', 'viewAuditLog', 'logout',
     // العربيات
     'getVehicles', 'createVehicle', 'updateVehicle', 'deleteVehicle',
@@ -68,7 +68,7 @@ const ROLE_PERMISSIONS = {
   'Operations': [
     // الأوبريشن يفتح الرحلة فقط؛ التصفية والإغلاق من اختصاص المحاسب (settleTripFinancials)
     'getTrips', 'getDrivers', 'createTrip', 
-    'updateDriver', 'updateVehicle', 'logout', 'getTripExpenses',
+    'updateDriver', 'updateVehicle', 'logout', 'getTripExpenses', 'getDashboard', 'getLookups',
     // البنزينة (قراءة فقط)
     'getFuelBalance', 'getFuelTransactions',
     // التنبيهات (قراءة فقط)
@@ -87,7 +87,7 @@ const ROLE_PERMISSIONS = {
   ],
   'Accountant': [
     // القديمة
-    'getTrips', 'getDrivers', 'addExpense', 'settleTripFinancials', 'logout', 'getTripExpenses',
+    'getTrips', 'getDrivers', 'addExpense', 'settleTripFinancials', 'logout', 'getTripExpenses', 'getDashboard', 'getLookups',
     // البنزينة (إضافة رصيد + قراءة)
     'getFuelBalance', 'addFuelBalance', 'getFuelTransactions',
     // التنبيهات
