@@ -67,14 +67,9 @@ function expenseService_addExpense(e, userId) {
     tripService_updateAdvanceSpent(tripId, amount, userId);
   }
   
-  // ==========================================
-  // 🆕 لو المصروف من نوع جاز طريق، نخصم من رصيد البنزينة
-  // ==========================================
-  if (isRoadFuel) {
-    let currentBalance = getFuelBalance();
-    let newBalance = currentBalance - amount;
-    updateFuelBalance(newBalance, userId, `جاز طريق للرحلة ${tripId}`);
-  }
+  // ملاحظة: جاز الطريق بيتدفع من عهدة السائق ومبيتخصمش من رصيد بنزينة الشركة.
+  // اللي بيتخصم من بنزينة الشركة هو بس لترات بداية الرحلة (في tripService_createTrip).
+  // هنا بنضيف لترات جاز الطريق على إجمالي لترات الرحلة (فوق) ونخصم قيمته من عهدة السائق (تحت).
   
   // معالجة المرفق
   let receiptFileId = "";

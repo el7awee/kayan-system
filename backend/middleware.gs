@@ -16,6 +16,7 @@ const ROLE_PERMISSIONS = {
     // القديمة
     'getTrips', 'getDrivers', 'createTrip', 'updateTripStatus', 
     'addExpense', 'settleTripFinancials', 'updateDriver', 'updateVehicle',
+    'getTripExpenses',
     'createUser', 'getUsers', 'toggleUserStatus', 'updateUserRole', 
     'deleteUser', 'resetUserPassword', 'viewAuditLog', 'logout',
     // العربيات
@@ -42,6 +43,7 @@ const ROLE_PERMISSIONS = {
     // القديمة
     'getTrips', 'getDrivers', 'createTrip', 'updateTripStatus', 
     'addExpense', 'settleTripFinancials', 'updateDriver', 'updateVehicle',
+    'getTripExpenses',
     'getUsers', 'viewAuditLog', 'logout',
     // العربيات
     'getVehicles', 'createVehicle', 'updateVehicle', 'deleteVehicle',
@@ -64,9 +66,9 @@ const ROLE_PERMISSIONS = {
     'updateTrip'
   ],
   'Operations': [
-    // القديمة
-    'getTrips', 'getDrivers', 'createTrip', 'updateTripStatus', 
-    'updateDriver', 'updateVehicle', 'logout',
+    // الأوبريشن يفتح الرحلة فقط؛ التصفية والإغلاق من اختصاص المحاسب (settleTripFinancials)
+    'getTrips', 'getDrivers', 'createTrip', 
+    'updateDriver', 'updateVehicle', 'logout', 'getTripExpenses',
     // البنزينة (قراءة فقط)
     'getFuelBalance', 'getFuelTransactions',
     // التنبيهات (قراءة فقط)
@@ -85,7 +87,7 @@ const ROLE_PERMISSIONS = {
   ],
   'Accountant': [
     // القديمة
-    'getTrips', 'getDrivers', 'addExpense', 'settleTripFinancials', 'logout',
+    'getTrips', 'getDrivers', 'addExpense', 'settleTripFinancials', 'logout', 'getTripExpenses',
     // البنزينة (إضافة رصيد + قراءة)
     'getFuelBalance', 'addFuelBalance', 'getFuelTransactions',
     // التنبيهات
@@ -214,23 +216,23 @@ function updateIdempotencyCache(key, finalResponsePayload) {
 function validateBusinessConstraints(e, action) {
   let ss = SpreadsheetApp.getActiveSpreadsheet();
   
-  // [BC_01]: لا يمكن إضافة مصروف إلا إذا كانت الرحلة OPEN أو IN_PROGRESS
+  // [BC_01]: لا يمكن إضافة مصروف إلا إذا كانت الرحلة مفتوحة (OPEN)
   if (action === "addExpense") {
     let tripId = e.parameter.Trip_ID;
     let tripStatus = getTripStatusFromDb(ss, tripId);
     
-    if (tripStatus !== "OPEN" && tripStatus !== "IN_PROGRESS") {
-      throwBusinessError("TRIP_NOT_ACTIVE", "لا يمكن إضافة مصروفات على رحلة حالتها ليست OPEN أو IN_PROGRESS.");
+    if (tripStatus !== "OPEN") {
+      throwBusinessError("TRIP_NOT_ACTIVE", "لا يمكن إضافة مصروفات على رحلة مغلقة.");
     }
   }
   
-  // [BC_03]: لا يمكن إغلاق الرحلة إلا إذا كانت MANAGEMENT_APPROVED
-  if (action === "updateTripStatus" && e.parameter.New_Status === "CLOSED") {
+  // [BC_03]: تصفية وإغلاق الرحلة بقت من خلال settleTripFinancials (خطوة المحاسب) — مفيش اعتماد إدارة وسيط.
+  if (action === "settleTripFinancials") {
     let tripId = e.parameter.Trip_ID;
     let currentStatus = getTripStatusFromDb(ss, tripId);
     
-    if (currentStatus !== "MANAGEMENT_APPROVED") {
-      throwBusinessError("MISSING_MANAGEMENT_APPROVAL", "لا يمكن إغلاق الرحلة إلا بعد اعتماد الإدارة العليا.");
+    if (currentStatus !== "OPEN") {
+      throwBusinessError("TRIP_NOT_OPEN", "لا يمكن تصفية رحلة غير مفتوحة.");
     }
   }
   
@@ -264,7 +266,7 @@ function isResourceBusyInActiveTrip(ss, resourceId, columnIndex) {
   
   let data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
-    if (data[i][columnIndex] == resourceId && data[i][7] === "IN_PROGRESS" && data[i][13] === false) {
+    if (data[i][columnIndex] == resourceId && data[i][7] === "OPEN" && data[i][13] === false) {
       return true;
     }
   }

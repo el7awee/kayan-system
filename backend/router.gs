@@ -222,6 +222,9 @@ function routeRequest(e, method, userId, userRole) {
       case 'getMonthlyExpenses':
         resultPayload = expenseService_getMonthlyExpenses(ss);
         break;
+      case 'getTripExpenses':
+        resultPayload = expenseService_getTripExpenses(ss, e.parameter);
+        break;
       case 'settleTripFinancials':
         resultPayload = accountingService_settleTrip(e, realUserId);
         break;
@@ -599,6 +602,116 @@ function balanceService_transferBalanceWrapper(fromUserId, toUserId, amount, not
   return balanceService_transferBalance(fromUserId, toUserId, amount, notes, createdBy);
 }
 
+/**
+ * تصفية عهدة الرحلة وإغلاقها (خطوة المحاسب).
+ * - يحسب المتبقّي = العهدة − إجمالي مصاريف الرحلة.
+ * - settlementType = "RETURNED": السائق يرجّع المتبقّي → يتخصم من عهدته ويتضاف لعهدة المحاسب (اللي بيقفل).
+ * - settlementType = "CARRIED_OVER": المتبقّي يفضل مع السائق كعهدة للرحلة الجاية.
+ * - يحوّل حالة الرحلة إلى CLOSED.
+ */
 function accountingService_settleTrip(e, uid) {
-  return { "success": false, "message": "تسوية الرحلة المالية غير مفعّلة بعد." };
+  let ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName("Trips_Log");
+  if (!sheet) throwBusinessError("SYSTEM_ERROR", "شيت Trips_Log غير موجود.");
+
+  let tripId = e.parameter.Trip_ID;
+  let settlementType = e.parameter.Settlement_Type || "RETURNED"; // RETURNED أو CARRIED_OVER
+  let clientVersion = parseInt(e.parameter.Version_Number || "0");
+
+  if (!tripId) {
+    throwBusinessError("BAD_REQUEST", "معامل Trip_ID مطلوب.");
+  }
+  if (settlementType !== "RETURNED" && settlementType !== "CARRIED_OVER") {
+    throwBusinessError("BAD_REQUEST", "نوع التصفية غير صالح (RETURNED أو CARRIED_OVER).");
+  }
+
+  let data = sheet.getDataRange().getValues();
+  let foundRowIndex = -1;
+  let dbVersion = -1;
+  let driverId = "";
+  let advanceCash = 0;
+  let currentStatus = "";
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] == tripId && data[i][13] === false) {
+      foundRowIndex = i + 1;
+      dbVersion = parseInt(data[i][12]);
+      driverId = data[i][3];
+      advanceCash = parseFloat(data[i][6]) || 0;
+      currentStatus = data[i][7];
+      break;
+    }
+  }
+
+  if (foundRowIndex === -1) {
+    throwBusinessError("TRIP_NOT_FOUND", `الرحلة (${tripId}) غير موجودة.`);
+  }
+
+  if (currentStatus === "CLOSED") {
+    throwBusinessError("TRIP_ALREADY_CLOSED", "الرحلة مغلقة بالفعل ولا يمكن تصفيتها مرة أخرى.");
+  }
+
+  if (clientVersion && clientVersion !== dbVersion) {
+    throwBusinessError("VERSION_MISMATCH", `النسخة الحالية [${dbVersion}]، نسختك [${clientVersion}].`);
+  }
+
+  // حساب إجمالي مصاريف الرحلة من Expenses_Log
+  let totalExpenses = 0;
+  let expensesSheet = ss.getSheetByName("Expenses_Log");
+  if (expensesSheet) {
+    let expensesData = expensesSheet.getDataRange().getValues();
+    for (let i = 1; i < expensesData.length; i++) {
+      if (expensesData[i][1] === tripId && expensesData[i][10] !== true) {
+        totalExpenses += parseFloat(expensesData[i][5]) || 0;
+      }
+    }
+  }
+
+  let remainingAdvance = advanceCash - totalExpenses;
+  let carriedOver = 0;
+  let settlementStatus = "";
+
+  if (settlementType === "RETURNED") {
+    // السائق يرجّع المتبقّي للمحاسب
+    if (remainingAdvance !== 0 && driverId) {
+      driverService_updateDriverAdvance(driverId, -remainingAdvance, uid, `تصفية عهدة الرحلة ${tripId} - رجوع المتبقّي`);
+      balanceService_updateBalance(uid, remainingAdvance, 'ADD', driverId, tripId, `استلام متبقّي عهدة الرحلة ${tripId} من السائق`, uid);
+    }
+    settlementStatus = "FULLY_SETTLED";
+    carriedOver = 0;
+  } else {
+    // ترحيل المتبقّي مع السائق للرحلة الجاية (عهدة السائق متغيّرتش)
+    settlementStatus = "CARRIED_OVER";
+    carriedOver = remainingAdvance;
+  }
+
+  let nextVersion = dbVersion + 1;
+  let nowStr = new Date().toISOString();
+
+  sheet.getRange(foundRowIndex, 8).setValue("CLOSED");        // Status
+  sheet.getRange(foundRowIndex, 12).setValue(nowStr);         // Updated_At
+  sheet.getRange(foundRowIndex, 13).setValue(nextVersion);    // Version
+  sheet.getRange(foundRowIndex, 22).setValue(settlementStatus); // Settlement_Status
+  sheet.getRange(foundRowIndex, 23).setValue(carriedOver);    // Carried_Over_Advance
+
+  createNotification(
+    'ALL',
+    'TRIP_SETTLED',
+    `✅ تمت تصفية وإغلاق الرحلة ${tripId}`,
+    `العهدة: ${advanceCash} ج.م، المصاريف: ${totalExpenses} ج.م، المتبقّي: ${remainingAdvance} ج.م (${settlementType === "RETURNED" ? "رجع للمحاسب" : "اترحّل للسائق"})`,
+    tripId
+  );
+
+  return {
+    "success": true,
+    "trip_id": tripId,
+    "message": `تمت تصفية وإغلاق الرحلة ${tripId} بنجاح.`,
+    "next_version": nextVersion,
+    "data": {
+      "advance_cash": advanceCash,
+      "total_expenses": totalExpenses,
+      "remaining_advance": remainingAdvance,
+      "settlement_type": settlementType
+    }
+  };
 }
