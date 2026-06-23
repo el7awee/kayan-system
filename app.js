@@ -236,7 +236,7 @@ async function callBackend(action, parameters = {}) {
     }
 
     // إضافة Idempotency Key
-    const isWriteAction = ["createTrip", "updateTrip", "updateTripStatus", "addExpense", "createUser", "toggleUserStatus", "updateUserRole", "deleteUser", "resetUserPassword", "createVehicle", "updateVehicle", "deleteVehicle", "createDriver", "updateDriverData", "deleteDriver", "createClient", "updateClient", "deleteClient", "addFuelBalance", "updateFuelPrice", "markNotificationRead", "markAllNotificationsRead", "deleteNotification", "addBalance", "transferBalance"].includes(action);
+    const isWriteAction = ["createTrip", "updateTrip", "settleTripFinancials", "addExpense", "createUser", "toggleUserStatus", "updateUserRole", "deleteUser", "resetUserPassword", "createVehicle", "updateVehicle", "deleteVehicle", "createDriver", "updateDriverData", "deleteDriver", "createClient", "updateClient", "deleteClient", "addFuelBalance", "updateFuelPrice", "markNotificationRead", "markAllNotificationsRead", "deleteNotification", "addBalance", "transferBalance"].includes(action);
     if (isWriteAction) {
         const timestamp = Date.now();
         const randomHex = Math.floor(Math.random() * 0xffffff).toString(16);
@@ -339,8 +339,8 @@ async function refreshDashboard() {
 
         if (tripsRes?.data) {
             const trips = tripsRes.data;
-            document.getElementById("stat-active-trips").innerText = trips.filter(t => ["IN_PROGRESS", "OPEN"].includes(t[7])).length;
-            document.getElementById("stat-pending-settlements").innerText = trips.filter(t => t[7] === "PENDING_SETTLEMENT").length;
+            document.getElementById("stat-active-trips").innerText = trips.filter(t => t[7] === "OPEN").length;
+            document.getElementById("stat-pending-settlements").innerText = trips.filter(t => t[7] === "OPEN").length;
             state.cache.trips = trips;
             state.activeTrips = trips;
         }
@@ -507,19 +507,26 @@ function renderTripsTable(trips) {
         const tripId = trip[0];
         const status = trip[7] || "OPEN";
         const currentVersion = trip[12] || 1;
+        const role = state.user.role;
 
         let badgeClass = "bg-slate-800 text-slate-400";
-        if (status === "OPEN") badgeClass = "bg-sky-500/10 text-sky-400 border border-sky-500/20";
-        if (status === "IN_PROGRESS") badgeClass = "bg-blue-500/10 text-blue-400 border border-blue-500/20";
-        if (status === "PENDING_SETTLEMENT") badgeClass = "bg-amber-500/10 text-amber-400 border border-amber-500/20";
-        if (status === "CLOSED") badgeClass = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+        let statusLabel = status;
+        if (status === "OPEN") { badgeClass = "bg-sky-500/10 text-sky-400 border border-sky-500/20"; statusLabel = "مفتوحة"; }
+        if (status === "CLOSED") { badgeClass = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"; statusLabel = "مغلقة"; }
 
         let actionButtons = "";
-        if (status !== "CLOSED") {
-            actionButtons = `
-                <button onclick="editTrip('${tripId}')" class="px-2 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition"><i class="fa-solid fa-pen ml-1"></i> تعديل</button>
-                <button onclick="triggerStatusUpdate('${tripId}', '${status}', ${currentVersion})" class="px-2 py-1 text-xs bg-secondary hover:bg-amber-500 hover:text-slate-950 rounded-lg font-medium transition active:scale-95"><i class="fa-solid fa-arrows-spin ml-1"></i> تصعيد</button>
-            `;
+        if (status === "OPEN") {
+            const canEdit = ["Operations", "Admin", "Manager"].includes(role);
+            const canSettle = ["Accountant", "Admin", "Manager"].includes(role);
+            if (canEdit) {
+                actionButtons += `<button onclick="editTrip('${tripId}')" class="px-2 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition"><i class="fa-solid fa-pen ml-1"></i> تعديل</button> `;
+            }
+            if (canSettle) {
+                actionButtons += `<button onclick="triggerSettlement('${tripId}', ${currentVersion})" class="px-2 py-1 text-xs bg-emerald-500/20 text-emerald-400 rounded-lg hover:bg-emerald-500 hover:text-slate-950 font-medium transition active:scale-95"><i class="fa-solid fa-circle-check ml-1"></i> تصفية وإغلاق</button>`;
+            }
+            if (!actionButtons) {
+                actionButtons = `<span class="text-xs text-muted">—</span>`;
+            }
         } else {
             actionButtons = `<span class="text-xs text-emerald-500 font-semibold"><i class="fa-solid fa-lock ml-1"></i> مغلقة</span>`;
         }
@@ -531,7 +538,7 @@ function renderTripsTable(trips) {
             <td class="p-4 font-medium">${lookupDriverName(trip[3])}</td>
             <td class="p-4 text-xs">${lookupVehicleLabel(trip[4])}</td>
             <td class="p-4 font-mono text-xs text-amber-400">${parseFloat(trip[14] || 0).toFixed(1)} لتر</td>
-            <td class="p-4"><span class="px-2.5 py-1 rounded-full text-xs font-semibold ${badgeClass}">${status}</span></td>
+            <td class="p-4"><span class="px-2.5 py-1 rounded-full text-xs font-semibold ${badgeClass}">${statusLabel}</span></td>
             <td class="p-4 text-center">${actionButtons}</td>
         `;
         fragment.appendChild(row);
@@ -591,42 +598,69 @@ window.editTrip = async function(tripId) {
     }
 };
 
-window.triggerStatusUpdate = async function(tripId, currentStatus, currentVersion) {
-    const statusWorkflow = {
-        "OPEN": "IN_PROGRESS",
-        "IN_PROGRESS": "PENDING_SETTLEMENT",
-        "PENDING_SETTLEMENT": "ACCOUNTING_APPROVED",
-        "ACCOUNTING_APPROVED": "MANAGEMENT_APPROVED",
-        "MANAGEMENT_APPROVED": "CLOSED"
-    };
+// تصفية وإغلاق الرحلة (خطوة المحاسب) — بديل نظام المراحل القديم
+window.triggerSettlement = async function(tripId, currentVersion) {
+    const trip = (state.cache.trips || []).find(t => t[0] === tripId);
+    if (!trip) {
+        Swal.fire({ icon: 'error', title: 'غير موجود', text: 'الرحلة غير موجودة' });
+        return;
+    }
 
-    const nextStatus = statusWorkflow[currentStatus];
-    if (!nextStatus) return;
+    const advance = parseFloat(trip[6] || 0);
 
-    const confirmation = await Swal.fire({
-        title: 'تأكيد الإجراء؟',
-        text: `تصعيد الرحلة ${tripId} من [${currentStatus}] إلى [${nextStatus}]؟`,
-        icon: 'warning',
+    // جلب مصاريف الرحلة لحساب المتبقّي قبل التأكيد
+    Swal.fire({ title: 'جاري حساب التصفية...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+    let totalExpenses = 0;
+    try {
+        const res = await callBackend("getTripExpenses", { Trip_ID: tripId });
+        const expensesList = res?.data || [];
+        totalExpenses = expensesList.reduce((sum, ex) => sum + (parseFloat(ex.amount) || 0), 0);
+    } catch (err) {
+        Swal.close();
+        handleStandardError(err);
+        return;
+    }
+
+    const remaining = advance - totalExpenses;
+    const remainingColor = remaining < 0 ? '#ef4444' : '#22c55e';
+
+    const { value: settlementType } = await Swal.fire({
+        title: `تصفية وإغلاق الرحلة ${tripId}`,
+        html: `
+            <div class="text-right" style="line-height:2.1">
+                <div>العهدة: <b>${advance.toFixed(2)} ج.م</b></div>
+                <div>إجمالي المصاريف: <b>${totalExpenses.toFixed(2)} ج.م</b></div>
+                <div>المتبقّي مع السائق: <b style="color:${remainingColor}">${remaining.toFixed(2)} ج.م</b></div>
+                <hr style="margin:12px 0">
+                <label style="display:block;margin-bottom:8px;cursor:pointer"><input type="radio" name="settle" value="RETURNED" checked> رجّع المتبقّي للمحاسب</label>
+                <label style="display:block;cursor:pointer"><input type="radio" name="settle" value="CARRIED_OVER"> ترحيل المتبقّي مع السائق للرحلة الجاية</label>
+            </div>
+        `,
         showCancelButton: true,
-        confirmButtonColor: '#f59e0b',
+        confirmButtonText: 'تأكيد الإغلاق',
+        cancelButtonText: 'إلغاء',
+        confirmButtonColor: '#22c55e',
         cancelButtonColor: '#334155',
-        confirmButtonText: 'نعم',
-        cancelButtonText: 'إلغاء'
+        preConfirm: () => {
+            const sel = document.querySelector('input[name="settle"]:checked');
+            return sel ? sel.value : 'RETURNED';
+        }
     });
 
-    if (!confirmation.isConfirmed) return;
+    if (!settlementType) return;
 
-    Swal.showLoading();
+    Swal.fire({ title: 'جاري الإغلاق...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
 
     try {
-        await callBackend("updateTripStatus", {
+        const response = await callBackend("settleTripFinancials", {
             Trip_ID: tripId,
-            New_Status: nextStatus,
+            Settlement_Type: settlementType,
             Version_Number: currentVersion
         });
 
-        Swal.fire({ icon: 'success', title: 'تم التحديث', text: `تحولت إلى: ${nextStatus}`, timer: 1500, showConfirmButton: false });
+        Swal.fire({ icon: 'success', title: 'تمت التصفية', text: response.message || 'تم إغلاق الرحلة بنجاح', timer: 2200, showConfirmButton: false });
         loadTripsData(true);
+        refreshDashboard();
     } catch (err) {
         handleStandardError(err);
     }
