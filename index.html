@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>منظومة الكيان v6.0 - لإدارة أساطيل النقل البري</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap');
+        
+        * {
+            font-family: 'Tajawal', sans-serif;
+        }
+        
+        /* ===== الوضع الليلي (الافتراضي) ===== */
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-card: #1e293b;
+            --bg-sidebar: #0f172a;
+            --bg-header: #1e293b;
+            --bg-input: #0f172a;
+            --bg-hover: #334155;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border-color: #334155;
+            --shadow: 0 4px 6px -1px rgba(0,0,0,0.5);
+            --input-border: #334155;
+            --input-focus: #f59e0b;
+        }
+        
+        /* ===== الوضع النهاري ===== */
+        [data-theme="light"] {
+            --bg-primary: #f1f5f9;
+            --bg-secondary: #ffffff;
+            --bg-card: #ffffff;
+            --bg-sidebar: #ffffff;
+            --bg-header: #ffffff;
+            --bg-input: #f8fafc;
+            --bg-hover: #f1f5f9;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --text-muted: #94a3b8;
+            --border-color: #e2e8f0;
+            --shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            --input-border: #e2e8f0;
+            --input-focus: #f59e0b;
+        }
+        
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            transition: background-color 0.3s ease, color 0.3s ease;
+            min-height: 100vh;
+        }
+        
+        .view-section {
+            transition: opacity 0.25s ease-in-out;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        /* ===== البطاقات ===== */
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow), 0 8px 12px -1px rgba(0,0,0,0.2);
+        }
+        
+        /* ===== القائمة الجانبية ===== */
+        .sidebar {
+            background-color: var(--bg-sidebar);
+            border-left: 1px solid var(--border-color);
+        }
+        
+        .header {
+            background-color: var(--bg-header);
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        /* ===== المدخلات ===== */
+        input, select {
+            background-color: var(--bg-input);
+            color: var(--text-primary);
+            border: 1px solid var(--input-border);
+            transition: all 0.3s ease;
+        }
+        
+        input:focus, select:focus {
+            border-color: var(--input-focus);
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+        }
+        
+        input::placeholder {
+            color: var(--text-muted);
+        }
+        
+        /* ===== الجداول ===== */
+        .table-row {
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .table-row:hover {
+            background-color: var(--bg-hover);
+        }
+        
+        /* ===== التنبيهات ===== */
+        .notification-badge {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* ===== شريط التمرير ===== */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--text-muted);
+            border-radius: 10px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
+        }
+        
+        /* ===== تأثيرات الزر ===== */
+        .btn-gold {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: #0f172a;
+            font-weight: 700;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-gold:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+        }
+        
+        .btn-gold:active {
+            transform: scale(0.98);
+        }
+
+        /* ====================================================== */
+        /* 🆕 إصلاح تخطيط الصفحة (المحتوى جنب القائمة الجانبية)  */
+        /* ====================================================== */
+        #main-layout {
+            display: none !important;
+            flex-direction: row !important;
+            min-height: 100vh !important;
+        }
+
+        #main-layout:not(.hidden) {
+            display: flex !important;
+        }
+
+        .sidebar {
+            flex-shrink: 0 !important;
+            width: 16rem !important;
+            height: 100vh !important;
+            position: sticky !important;
+            top: 0 !important;
+            overflow-y: auto !important;
+        }
+
+        main {
+            flex: 1 !important;
+            min-height: 100vh !important;
+            overflow-y: auto !important;
+            padding: 1.5rem !important;
+        }
+
+        @media (max-width: 768px) {
+            #main-layout:not(.hidden) {
+                flex-direction: column !important;
+            }
+            .sidebar {
+                width: 100% !important;
+                height: auto !important;
+                position: relative !important;
+            }
+            main {
+                min-height: auto !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ============================================ -->
+    <!-- 🟢 شاشة تسجيل الدخول                         -->
+    <!-- ============================================ -->
+    <section id="view-login" class="view-section min-h-screen flex items-center justify-center px-4">
+        <div class="card p-8 rounded-2xl w-full max-w-md backdrop-blur-md">
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/10 text-amber-500 mb-4 border border-amber-500/20 shadow-inner">
+                    <i class="fa-solid fa-truck-fast text-2xl"></i>
+                </div>
+                <h1 class="text-2xl font-bold tracking-wide">منظومة الكيان v6.0</h1>
+                <p class="text-sm text-secondary mt-1">نظام تشغيل أساطيل النقل البري واللوجستيات</p>
+            </div>
+            
+            <form id="form-login" class="space-y-5">
+                <div>
+                    <label class="block text-sm font-medium mb-2">اسم المستخدم</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 right-0 flex items-center pr-3 text-muted"><i class="fa-solid fa-user"></i></span>
+                        <input type="text" id="input-username" required class="w-full pl-4 pr-10 py-3 rounded-xl" placeholder="ادخل اسم المستخدم">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">كلمة المرور</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 right-0 flex items-center pr-3 text-muted"><i class="fa-solid fa-lock"></i></span>
+                        <input type="password" id="input-password" required class="w-full pl-4 pr-10 py-3 rounded-xl" placeholder="••••••••">
+                    </div>
+                </div>
+                <button type="submit" id="btn-login-submit" class="btn-gold w-full py-3.5 rounded-xl active:scale-[0.98] transition duration-150">
+                    <i class="fa-solid fa-right-to-bracket ml-2"></i> تسجيل الدخول آمن
+                </button>
+            </form>
+        </div>
+    </section>
+
+    <!-- ============================================ -->
+    <!-- 🟦 التخطيط الرئيسي (بعد تسجيل الدخول)        -->
+    <!-- ============================================ -->
+    <div id="main-layout" class="hidden flex-1 flex-col md:flex-row min-h-screen">
+        
+        <!-- ========================================== -->
+        <!-- 📌 القائمة الجانبية (Sidebar)              -->
+        <!-- ========================================== -->
+        <aside class="sidebar w-full md:w-64 border-l border-border flex flex-col">
+            <div class="header p-5 border-b border-border flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-shield-halved text-amber-500 text-xl"></i>
+                    <span class="font-bold tracking-wider">لوحة الكيان</span>
+                </div>
+                <span id="badge-role" class="text-[11px] px-2 py-0.5 rounded-full bg-secondary text-secondary border border-border font-mono">Role</span>
+            </div>
+            
+            <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
+                <button id="nav-dashboard" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition duration-150 font-medium group">
+                    <i class="fa-solid fa-chart-pie text-muted group-hover:text-amber-500 transition"></i> لوحة التحكم
+                </button>
+                <button id="nav-trips" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition duration-150 font-medium group">
+                    <i class="fa-solid fa-route text-muted group-hover:text-amber-500 transition"></i> إدارة الرحلات
+                </button>
+                <button id="nav-expenses" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition duration-150 font-medium group">
+                    <i class="fa-solid fa-money-bill-transfer text-muted group-hover:text-amber-500 transition"></i> المصروفات
+                </button>
+                <button id="nav-fuel" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition duration-150 font-medium group">
+                    <i class="fa-solid fa-gas-pump text-muted group-hover:text-amber-500 transition"></i> البنزينة
+                </button>
+                <button id="nav-vehicles" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition duration-150 font-medium group">
+                    <i class="fa-solid fa-truck text-muted group-hover:text-amber-500 transition"></i> العربيات
+                </button>
+                <button id="nav-drivers" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition duration-150 font-medium group">
+                    <i class="fa-solid fa-user-tie text-muted group-hover:text-amber-500 transition"></i> السائقين
+                </button>
+                <button id="nav-clients" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition duration-150 font-medium group">
+                    <i class="fa-solid fa-building text-muted group-hover:text-amber-500 transition"></i> العملاء
+                </button>
+                <button id="nav-balance" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition duration-150 font-medium group">
+                    <i class="fa-solid fa-scale-balanced text-muted group-hover:text-amber-500 transition"></i> العهدات
+                </button>
+                <button id="nav-notifications" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition duration-150 font-medium group">
+                    <i class="fa-solid fa-bell text-muted group-hover:text-amber-500 transition"></i> التنبيهات
+                    <span id="notif-badge" class="notification-badge mr-auto text-xs bg-rose-500 text-white px-2 py-0.5 rounded-full hidden">0</span>
+                </button>
+                <button id="nav-settings" class="w-full hidden flex items-center gap-3 px-4 py-2.5 rounded-xl transition duration-150 font-medium group">
+                    <i class="fa-solid fa-users-gear text-muted group-hover:text-amber-500 transition"></i> إدارة المستخدمين
+                </button>
+            </nav>
+            
+            <div class="p-4 border-t border-border bg-secondary/40 space-y-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-secondary rounded-xl border border-border flex items-center justify-center font-bold" id="user-avatar">U</div>
+                    <div class="truncate">
+                        <p id="txt-user-name" class="text-sm font-semibold truncate">User Name</p>
+                        <p id="txt-user-id" class="text-xs text-muted font-mono truncate">ID: 000</p>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button id="btn-theme-toggle" class="flex-1 py-2 bg-secondary hover:bg-hover border border-border rounded-lg text-xs font-medium transition" title="تبديل الوضع">
+                        <i class="fa-solid fa-moon"></i>
+                    </button>
+                    <button id="btn-logout" class="flex-1 py-2 bg-secondary hover:bg-rose-950/40 text-rose-400 border border-border hover:border-rose-900/50 rounded-lg text-xs font-medium transition">
+                        <i class="fa-solid fa-arrow-right-from-bracket ml-1"></i> خروج
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ========================================== -->
+        <!-- 📄 المحتوى الرئيسي                         -->
+        <!-- ========================================== -->
+        <main class="flex-1 p-6 md:p-8 overflow-y-auto" style="background-color: var(--bg-primary);">
+            
+            <!-- ======================================== -->
+            <!-- 📊 شاشة لوحة التحكم (Dashboard)          -->
+            <!-- ======================================== -->
+            <section id="view-dashboard" class="view-section hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-2xl font-bold">التقرير اللحظي للأسطول</h2>
+                        <p class="text-xs text-muted mt-1">ملخص مؤشرات الأداء والتشغيل الفوري للمنظومة</p>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+                    <div class="card p-5 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-hover" id="card-active-trips">
+                        <div>
+                            <p class="text-xs text-muted">الرحلات النشطة</p>
+                            <h3 id="stat-active-trips" class="text-2xl font-bold mt-2 font-mono">0</h3>
+                        </div>
+                        <div class="p-3 bg-blue-500/10 text-blue-400 rounded-xl border border-blue-500/20"><i class="fa-solid fa-truck-moving text-xl"></i></div>
+                    </div>
+                    <div class="card p-5 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-hover" id="card-pending">
+                        <div>
+                            <p class="text-xs text-muted">بانتظار الاعتماد</p>
+                            <h3 id="stat-pending-settlements" class="text-2xl font-bold text-amber-500 mt-2 font-mono">0</h3>
+                        </div>
+                        <div class="p-3 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-500/20"><i class="fa-solid fa-clock-rotate-left text-xl"></i></div>
+                    </div>
+                    <div class="card p-5 rounded-2xl flex items-center justify-between">
+                        <div>
+                            <p class="text-xs text-muted">مصروفات الشهر</p>
+                            <h3 id="stat-total-expenses" class="text-2xl font-bold text-rose-500 mt-2 font-mono">0 ج.م</h3>
+                        </div>
+                        <div class="p-3 bg-rose-500/10 text-rose-400 rounded-xl border border-rose-500/20"><i class="fa-solid fa-receipt text-xl"></i></div>
+                    </div>
+                    <div class="card p-5 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-hover" id="card-fuel">
+                        <div>
+                            <p class="text-xs text-muted">رصيد البنزينة</p>
+                            <h3 id="stat-fuel-balance" class="text-2xl font-bold mt-2 font-mono">0 ج.م</h3>
+                        </div>
+                        <div class="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20"><i class="fa-solid fa-gas-pump text-xl"></i></div>
+                    </div>
+                    <div class="card p-5 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-hover" id="card-notifications">
+                        <div>
+                            <p class="text-xs text-muted">التنبيهات</p>
+                            <h3 id="stat-notifications" class="text-2xl font-bold text-amber-500 mt-2 font-mono">0</h3>
+                        </div>
+                        <div class="p-3 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-500/20"><i class="fa-solid fa-bell text-xl"></i></div>
+                    </div>
+                    <div class="card p-5 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-hover" id="card-balance">
+                        <div>
+                            <p class="text-xs text-muted">عهدتي</p>
+                            <h3 id="stat-my-balance" class="text-2xl font-bold mt-2 font-mono">0 ج.م</h3>
+                        </div>
+                        <div class="p-3 bg-purple-500/10 text-purple-400 rounded-xl border border-purple-500/20"><i class="fa-solid fa-wallet text-xl"></i></div>
+                    </div>
+                </div>
+
+                <!-- 🆕 شريط التنبيهات العلوي -->
+                <div id="notification-bar" class="card p-4 rounded-2xl hidden">
+                    <div class="flex items-center gap-3">
+                        <i class="fa-solid fa-circle-exclamation text-amber-500 text-xl"></i>
+                        <div class="flex-1">
+                            <p id="notification-bar-message" class="text-sm font-medium">تنبيه: رصيد البنزينة منخفض</p>
+                        </div>
+                        <button id="notification-bar-close" class="text-muted hover:text-primary transition">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 🆕 جدول حركة البنزينة الأخيرة -->
+                <div class="card rounded-2xl overflow-hidden">
+                    <div class="p-5 border-b border-border flex items-center justify-between">
+                        <h3 class="text-base font-bold"><i class="fa-solid fa-clock-rotate-left text-amber-500 ml-2"></i>آخر حركات البنزينة</h3>
+                        <button id="btn-refresh-fuel" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-right border-collapse text-sm">
+                            <thead class="bg-secondary/60 text-muted border-b border-border text-xs">
+                                <tr>
+                                    <th class="p-4">التاريخ</th>
+                                    <th class="p-4">النوع</th>
+                                    <th class="p-4">القيمة</th>
+                                    <th class="p-4">الرصيد بعد</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-fuel-body" class="divide-y divide-border">
+                                <tr><td colspan="4" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ======================================== -->
+            <!-- 🚛 شاشة إدارة الرحلات (Trips) - معدلة    -->
+            <!-- ======================================== -->
+            <section id="view-trips" class="view-section hidden space-y-6">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                    <div class="card p-6 rounded-2xl space-y-4">
+                        <h3 class="text-lg font-bold"><i class="fa-solid fa-square-plus text-amber-500 ml-2"></i>إنشاء رحلة جديدة</h3>
+                        <form id="form-create-trip" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">العميل</label>
+                                <select id="trip-customer-id" required class="w-full px-3 py-2 rounded-xl text-sm">
+                                    <option value="">-- اختر العميل --</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">السائق</label>
+                                <select id="trip-driver-id" required class="w-full px-3 py-2 rounded-xl text-sm">
+                                    <option value="">-- اختر السائق --</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">العربية</label>
+                                <select id="trip-vehicle-id" required class="w-full px-3 py-2 rounded-xl text-sm">
+                                    <option value="">-- اختر العربية --</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">خط السير</label>
+                                <input type="text" id="trip-route" required class="w-full px-3 py-2 rounded-xl text-sm" placeholder="مثال: القاهرة - الإسكندرية">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">العهدة النقدية (ج.م)</label>
+                                <input type="number" id="trip-advance-cash" min="0" class="w-full px-3 py-2 rounded-xl text-sm font-mono" placeholder="0.00">
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-medium text-muted mb-1">لترات الجاز</label>
+                                    <input type="number" id="trip-fuel-liters" required min="0" step="0.1" class="w-full px-3 py-2 rounded-xl text-sm font-mono" placeholder="0.0">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-muted mb-1">سعر اللتر</label>
+                                    <input type="number" id="trip-fuel-price" required min="0" step="0.01" class="w-full px-3 py-2 rounded-xl text-sm font-mono" placeholder="0.00">
+                                </div>
+                            </div>
+                            <button type="submit" id="btn-trip-submit" class="btn-gold w-full py-2.5 rounded-xl text-sm">
+                                <i class="fa-solid fa-paper-plane ml-1"></i> بث أمر الرحلة
+                            </button>
+                        </form>
+                    </div>
+                    
+                    <div class="lg:col-span-2 card rounded-2xl overflow-hidden flex flex-col">
+                        <div class="p-5 border-b border-border bg-secondary/30 flex items-center justify-between">
+                            <h3 class="text-base font-bold"><i class="fa-solid fa-list-check text-amber-500 ml-2"></i>الرحلات الحالية</h3>
+                            <button id="btn-refresh-trips" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-right border-collapse text-sm">
+                                <thead class="bg-secondary/60 text-muted border-b border-border text-xs">
+                                    <tr>
+                                        <th class="p-4">الرحلة</th>
+                                        <th class="p-4">السائق</th>
+                                        <th class="p-4">العربية</th>
+                                        <th class="p-4">الجاز</th>
+                                        <th class="p-4">الحالة</th>
+                                        <th class="p-4 text-center">إجراء</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-trips-body" class="divide-y divide-border">
+                                    <tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ======================================== -->
+            <!-- 💰 شاشة المصروفات                        -->
+            <!-- ======================================== -->
+            <section id="view-expenses" class="view-section hidden space-y-6">
+                <div class="max-w-2xl mx-auto card p-6 rounded-2xl space-y-5">
+                    <div class="border-b border-border pb-3">
+                        <h3 class="text-lg font-bold"><i class="fa-solid fa-file-invoice-dollar text-rose-500 ml-2"></i>تسجيل مصروف</h3>
+                    </div>
+                    <form id="form-add-expense" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-medium text-muted mb-1">رقم الرحلة</label>
+                            <input type="text" id="expense-trip-id" required class="w-full px-3 py-2 rounded-xl text-sm" placeholder="TRP-YYYYMMDD-XXXX">
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">السائق</label>
+                                <select id="expense-driver-id" class="w-full px-3 py-2 rounded-xl text-sm">
+                                    <option value="">-- اختر --</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">العربية</label>
+                                <select id="expense-vehicle-id" class="w-full px-3 py-2 rounded-xl text-sm">
+                                    <option value="">-- اختر --</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-muted mb-1">بند المصروف</label>
+                            <select id="expense-category" class="w-full px-3 py-2 rounded-xl text-sm">
+                                <option value="بنزين / سولار">بنزين / سولار</option>
+                                <option value="كارتة طرق">كارتة طرق</option>
+                                <option value="إصلاحات">إصلاحات</option>
+                                <option value="إكراميات">إكراميات</option>
+                                <option value="مبيت ومأكل">مبيت ومأكل</option>
+                                <option value="أخرى">أخرى</option>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">القيمة (ج.م)</label>
+                                <input type="number" id="expense-amount" required min="0.5" step="0.5" class="w-full px-3 py-2 rounded-xl text-sm font-mono" placeholder="0.00">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">لترات (للبنزين)</label>
+                                <input type="number" id="expense-fuel-liters" min="0" step="0.1" class="w-full px-3 py-2 rounded-xl text-sm font-mono" placeholder="0.0">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-muted mb-1">إيصال</label>
+                            <input type="file" id="expense-file-input" accept="image/*,application/pdf" class="w-full text-xs file:ml-4 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-secondary file:text-primary hover:file:bg-hover transition cursor-pointer">
+                        </div>
+                        <input type="hidden" id="expense-file-base64">
+                        <input type="hidden" id="expense-file-name">
+                        <button type="submit" id="btn-expense-submit" class="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-sm transition">
+                            <i class="fa-solid fa-cloud-arrow-up ml-1"></i> حفظ المصروف
+                        </button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- ======================================== -->
+            <!-- ⛽ شاشة البنزينة (جديدة)                 -->
+            <!-- ======================================== -->
+            <section id="view-fuel" class="view-section hidden space-y-6">
+                <div class="flex items-center justify-between border-b border-border pb-4">
+                    <div>
+                        <h2 class="text-2xl font-bold">إدارة البنزينة</h2>
+                        <p class="text-xs text-muted mt-1">إدارة رصيد البنزينة وحركة الجاز</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="card p-6 rounded-2xl text-center">
+                        <p class="text-sm text-muted">الرصيد الحالي</p>
+                        <h3 id="fuel-current-balance" class="text-3xl font-bold mt-2">0 ج.م</h3>
+                    </div>
+                    <div class="card p-6 rounded-2xl text-center">
+                        <p class="text-sm text-muted">سعر اللتر</p>
+                        <h3 id="fuel-current-price" class="text-3xl font-bold mt-2">0.00 ج.م</h3>
+                    </div>
+                    <div class="card p-6 rounded-2xl text-center">
+                        <p class="text-sm text-muted">آخر تحديث</p>
+                        <h3 id="fuel-last-updated" class="text-lg font-bold mt-2">--</h3>
+                    </div>
+                </div>
+                <div class="flex gap-3 flex-wrap">
+                    <button id="btn-add-fuel-balance" class="btn-gold px-6 py-2.5 rounded-xl text-sm"><i class="fa-solid fa-plus ml-1"></i> إضافة رصيد</button>
+                    <button id="btn-update-fuel-price" class="btn-gold px-6 py-2.5 rounded-xl text-sm"><i class="fa-solid fa-pen ml-1"></i> تغيير سعر اللتر</button>
+                    <button id="btn-refresh-fuel-data" class="bg-secondary hover:bg-hover px-6 py-2.5 rounded-xl text-sm border border-border transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
+                </div>
+                <div class="card rounded-2xl overflow-hidden">
+                    <div class="p-5 border-b border-border bg-secondary/30 flex items-center justify-between">
+                        <h3 class="text-base font-bold"><i class="fa-solid fa-clock-rotate-left text-amber-500 ml-2"></i>حركة الجاز</h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-right border-collapse text-sm">
+                            <thead class="bg-secondary/60 text-muted border-b border-border text-xs">
+                                <tr>
+                                    <th class="p-4">التاريخ</th>
+                                    <th class="p-4">العربية</th>
+                                    <th class="p-4">النوع</th>
+                                    <th class="p-4">اللترات</th>
+                                    <th class="p-4">القيمة</th>
+                                    <th class="p-4">المصدر</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-fuel-transactions" class="divide-y divide-border">
+                                <tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ======================================== -->
+            <!-- 🚗 شاشة العربيات (جديدة)                 -->
+            <!-- ======================================== -->
+            <section id="view-vehicles" class="view-section hidden space-y-6">
+                <div class="flex items-center justify-between border-b border-border pb-4">
+                    <div>
+                        <h2 class="text-2xl font-bold">إدارة العربيات</h2>
+                        <p class="text-xs text-muted mt-1">إضافة وتعديل وحذف العربيات</p>
+                    </div>
+                </div>
+                <button id="btn-add-vehicle" class="btn-gold px-6 py-2.5 rounded-xl text-sm"><i class="fa-solid fa-plus ml-1"></i> إضافة عربية</button>
+                <div class="card rounded-2xl overflow-hidden">
+                    <div class="p-5 border-b border-border bg-secondary/30 flex items-center justify-between">
+                        <h3 class="text-base font-bold"><i class="fa-solid fa-truck ml-2 text-amber-500"></i>قائمة العربيات</h3>
+                        <button id="btn-refresh-vehicles" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-right border-collapse text-sm">
+                            <thead class="bg-secondary/60 text-muted border-b border-border text-xs">
+                                <tr>
+                                    <th class="p-4">الرقم</th>
+                                    <th class="p-4">اللوحة</th>
+                                    <th class="p-4">الموديل</th>
+                                    <th class="p-4">النوع</th>
+                                    <th class="p-4">الرخصة</th>
+                                    <th class="p-4 text-center">إجراءات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-vehicles-body" class="divide-y divide-border">
+                                <tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ======================================== -->
+            <!-- 👤 شاشة السائقين (جديدة)                 -->
+            <!-- ======================================== -->
+            <section id="view-drivers" class="view-section hidden space-y-6">
+                <div class="flex items-center justify-between border-b border-border pb-4">
+                    <div>
+                        <h2 class="text-2xl font-bold">إدارة السائقين</h2>
+                        <p class="text-xs text-muted mt-1">إضافة وتعديل وحذف السائقين</p>
+                    </div>
+                </div>
+                <button id="btn-add-driver" class="btn-gold px-6 py-2.5 rounded-xl text-sm"><i class="fa-solid fa-plus ml-1"></i> إضافة سائق</button>
+                <div class="card rounded-2xl overflow-hidden">
+                    <div class="p-5 border-b border-border bg-secondary/30 flex items-center justify-between">
+                        <h3 class="text-base font-bold"><i class="fa-solid fa-users ml-2 text-amber-500"></i>قائمة السائقين</h3>
+                        <button id="btn-refresh-drivers" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-right border-collapse text-sm">
+                            <thead class="bg-secondary/60 text-muted border-b border-border text-xs">
+                                <tr>
+                                    <th class="p-4">الاسم</th>
+                                    <th class="p-4">التليفون</th>
+                                    <th class="p-4">الرخصة</th>
+                                    <th class="p-4">العهدة</th>
+                                    <th class="p-4 text-center">إجراءات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-drivers-body" class="divide-y divide-border">
+                                <tr><td colspan="5" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ======================================== -->
+            <!-- 🏢 شاشة العملاء (جديدة)                  -->
+            <!-- ======================================== -->
+            <section id="view-clients" class="view-section hidden space-y-6">
+                <div class="flex items-center justify-between border-b border-border pb-4">
+                    <div>
+                        <h2 class="text-2xl font-bold">إدارة العملاء</h2>
+                        <p class="text-xs text-muted mt-1">إضافة وتعديل وحذف العملاء</p>
+                    </div>
+                </div>
+                <button id="btn-add-client" class="btn-gold px-6 py-2.5 rounded-xl text-sm"><i class="fa-solid fa-plus ml-1"></i> إضافة عميل</button>
+                <div class="card rounded-2xl overflow-hidden">
+                    <div class="p-5 border-b border-border bg-secondary/30 flex items-center justify-between">
+                        <h3 class="text-base font-bold"><i class="fa-solid fa-building ml-2 text-amber-500"></i>قائمة العملاء</h3>
+                        <button id="btn-refresh-clients" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-right border-collapse text-sm">
+                            <thead class="bg-secondary/60 text-muted border-b border-border text-xs">
+                                <tr>
+                                    <th class="p-4">الاسم</th>
+                                    <th class="p-4">التليفون</th>
+                                    <th class="p-4">العنوان</th>
+                                    <th class="p-4 text-center">إجراءات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-clients-body" class="divide-y divide-border">
+                                <tr><td colspan="4" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ======================================== -->
+            <!-- ⚖️ شاشة العهدات (جديدة)                  -->
+            <!-- ======================================== -->
+            <section id="view-balance" class="view-section hidden space-y-6">
+                <div class="flex items-center justify-between border-b border-border pb-4">
+                    <div>
+                        <h2 class="text-2xl font-bold">إدارة العهدات</h2>
+                        <p class="text-xs text-muted mt-1">عرض وإدارة العهدات والحركات المالية</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="btn-add-balance" class="btn-gold px-4 py-2 rounded-xl text-sm"><i class="fa-solid fa-plus ml-1"></i> إيداع</button>
+                        <button id="btn-transfer-balance" class="btn-gold px-4 py-2 rounded-xl text-sm"><i class="fa-solid fa-arrow-right-arrow-left ml-1"></i> تحويل</button>
+                        <button id="btn-refresh-balance" class="bg-secondary hover:bg-hover px-4 py-2 rounded-xl text-sm border border-border transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
+                    </div>
+                </div>
+                
+                <!-- كروت ملخص العهدة -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="card p-6 rounded-2xl text-center">
+                        <p class="text-sm text-muted">رصيدي الحالي</p>
+                        <h3 id="balance-my-balance" class="text-3xl font-bold mt-2">0 ج.م</h3>
+                    </div>
+                    <div class="card p-6 rounded-2xl text-center">
+                        <p class="text-sm text-muted">إجمالي الإيداعات</p>
+                        <h3 id="balance-total-in" class="text-3xl font-bold text-emerald-500 mt-2">0 ج.م</h3>
+                    </div>
+                    <div class="card p-6 rounded-2xl text-center">
+                        <p class="text-sm text-muted">إجمالي الصرف</p>
+                        <h3 id="balance-total-out" class="text-3xl font-bold text-rose-500 mt-2">0 ج.م</h3>
+                    </div>
+                </div>
+
+                <!-- جدول الحركات -->
+                <div class="card rounded-2xl overflow-hidden">
+                    <div class="p-5 border-b border-border bg-secondary/30 flex items-center justify-between">
+                        <h3 class="text-base font-bold"><i class="fa-solid fa-list-ul ml-2 text-amber-500"></i>حركات العهدات</h3>
+                        <div class="flex gap-2">
+                            <select id="balance-filter-user" class="text-xs bg-secondary border border-border rounded-lg px-2 py-1">
+                                <option value="">كل المستخدمين</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-right border-collapse text-sm">
+                            <thead class="bg-secondary/60 text-muted border-b border-border text-xs">
+                                <tr>
+                                    <th class="p-4">التاريخ</th>
+                                    <th class="p-4">المستخدم</th>
+                                    <th class="p-4">النوع</th>
+                                    <th class="p-4">المبلغ</th>
+                                    <th class="p-4">الرصيد بعد</th>
+                                    <th class="p-4">ملاحظات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-balance-body" class="divide-y divide-border">
+                                <tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ======================================== -->
+            <!-- 🔔 شاشة التنبيهات (جديدة)                -->
+            <!-- ======================================== -->
+            <section id="view-notifications" class="view-section hidden space-y-6">
+                <div class="flex items-center justify-between border-b border-border pb-4">
+                    <div>
+                        <h2 class="text-2xl font-bold">التنبيهات</h2>
+                        <p class="text-xs text-muted mt-1">جميع تنبيهات النظام</p>
+                    </div>
+                    <button id="btn-mark-all-read" class="btn-gold px-6 py-2.5 rounded-xl text-sm"><i class="fa-solid fa-check-double ml-1"></i> تحديد الكل كمقروء</button>
+                </div>
+                <div class="card rounded-2xl overflow-hidden">
+                    <div class="p-5 border-b border-border bg-secondary/30 flex items-center justify-between">
+                        <h3 class="text-base font-bold"><i class="fa-solid fa-bell ml-2 text-amber-500"></i>قائمة التنبيهات</h3>
+                        <button id="btn-refresh-notifications" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
+                    </div>
+                    <div id="notifications-list" class="divide-y divide-border">
+                        <p class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ======================================== -->
+            <!-- 👑 شاشة إدارة المستخدمين (Settings)      -->
+            <!-- ======================================== -->
+            <section id="view-settings" class="view-section hidden space-y-6">
+                <div class="flex items-center justify-between border-b border-border pb-4">
+                    <div>
+                        <h2 class="text-2xl font-bold">إدارة المستخدمين</h2>
+                        <p class="text-xs text-muted mt-1">إضافة وتعديل وحذف المستخدمين</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                    <div class="card p-6 rounded-2xl space-y-4">
+                        <h3 class="text-lg font-bold"><i class="fa-solid fa-user-plus ml-2 text-amber-500"></i>إضافة مستخدم</h3>
+                        <form id="form-create-user" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">الاسم</label>
+                                <input type="text" id="user-full-name" required class="w-full px-3 py-2 rounded-xl text-sm" placeholder="محمود سعد">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">اسم المستخدم</label>
+                                <input type="text" id="user-username" required class="w-full px-3 py-2 rounded-xl text-sm font-mono" placeholder="mahmoud">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">كلمة المرور</label>
+                                <input type="password" id="user-password" required class="w-full px-3 py-2 rounded-xl text-sm" placeholder="••••••••">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">الدور</label>
+                                <select id="user-role-select" class="w-full px-3 py-2 rounded-xl text-sm">
+                                    <option value="Operations">عمليات</option>
+                                    <option value="Accountant">محاسب</option>
+                                    <option value="Manager">مدير عام</option>
+                                    <option value="Admin">مدير نظام</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">الإيميل (للتنبيهات)</label>
+                                <input type="email" id="user-email" class="w-full px-3 py-2 rounded-xl text-sm" placeholder="email@example.com">
+                            </div>
+                            <button type="submit" id="btn-user-submit" class="btn-gold w-full py-2.5 rounded-xl text-sm">
+                                <i class="fa-solid fa-floppy-disk"></i> حفظ
+                            </button>
+                        </form>
+                    </div>
+                    <div class="lg:col-span-2 card rounded-2xl overflow-hidden flex flex-col">
+                        <div class="p-5 border-b border-border bg-secondary/30 flex items-center justify-between">
+                            <h3 class="text-base font-bold"><i class="fa-solid fa-users ml-2 text-slate-400"></i>المستخدمين</h3>
+                            <button id="btn-refresh-users" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-right border-collapse text-sm">
+                                <thead class="bg-secondary/60 text-muted border-b border-border text-xs">
+                                    <tr>
+                                        <th class="p-4">الموظف</th>
+                                        <th class="p-4">المستخدم</th>
+                                        <th class="p-4">الدور</th>
+                                        <th class="p-4">الحالة</th>
+                                        <th class="p-4 text-center">إجراءات</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-users-body" class="divide-y divide-border">
+                                    <tr><td colspan="5" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- 📌 التذييل                                    -->
+    <!-- ============================================ -->
+    <footer class="bg-secondary py-3 text-center text-[11px] text-muted border-t border-border">
+        منظومة الكيان اللوجستية v6.0 © 2026
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
