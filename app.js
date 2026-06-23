@@ -329,13 +329,14 @@ async function handleLoginSubmit(e) {
 // ─── 5️⃣-ب: لوحة التحكم ───
 async function refreshDashboard() {
     try {
-        const [tripsRes, fuelRes, balanceRes, notifRes, expensesRes] = await Promise.all([
-            callBackend("getTrips", { Limit: 20 }),
-            callBackend("getFuelBalance"),
-            callBackend("getMyBalance"),
-            callBackend("getNotifications"),
-            callBackend("getMonthlyExpenses")
-        ]);
+        // طلب واحد مجمّع بدل 5 طلبات منفصلة (تحسين السرعة)
+        const dash = await callBackend("getDashboard", { Limit: 20 });
+        const d = dash?.data || {};
+        const tripsRes = { data: d.trips };
+        const fuelRes = { data: d.fuel };
+        const balanceRes = { data: d.my_balance };
+        const notifRes = { data: d.notifications };
+        const expensesRes = { data: d.monthly_expenses };
 
         if (tripsRes?.data) {
             const trips = tripsRes.data;
@@ -391,12 +392,13 @@ async function loadDropdowns(forceRefresh = false) {
     if (dropdownsLoaded && !forceRefresh) return;
     
     try {
-        const [clientsRes, driversRes, vehiclesRes, fuelRes] = await Promise.all([
-            callBackend("getClients"),
-            callBackend("getDriversList"),
-            callBackend("getVehicles"),
-            callBackend("getFuelBalance")
-        ]);
+        // طلب واحد مجمّع بدل 4 طلبات منفصلة (تحسين السرعة)
+        const lookups = await callBackend("getLookups");
+        const lk = lookups?.data || {};
+        const clientsRes = { data: lk.clients };
+        const driversRes = { data: lk.drivers };
+        const vehiclesRes = { data: lk.vehicles };
+        const fuelRes = { data: lk.fuel };
 
         if (clientsRes?.data) {
             const clientSelect = document.getElementById("trip-customer-id");
@@ -598,7 +600,11 @@ window.editTrip = async function(tripId) {
     }
 };
 
-// تصفية وإغلاق الرحلة (خطوة المحاسب) — بديل نظام المراحل القديم
+// فئات المصروفات (نفس فئات شاشة المصروفات) — "بنزين / سولار" = جاز طريق (يحتاج لترات)
+const SETTLE_EXPENSE_CATEGORIES = ["بنزين / سولار", "كارتة طرق", "إصلاحات", "إكراميات", "مبيت ومأكل", "أخرى"];
+const ROAD_FUEL_CATEGORY = "بنزين / سولار";
+
+// تصفية وإغلاق الرحلة (خطوة المحاسب): إدخال المصروفات + التصفية على عهدة السائق الفعلية
 window.triggerSettlement = async function(tripId, currentVersion) {
     const trip = (state.cache.trips || []).find(t => t[0] === tripId);
     if (!trip) {
@@ -606,34 +612,44 @@ window.triggerSettlement = async function(tripId, currentVersion) {
         return;
     }
 
-    const advance = parseFloat(trip[6] || 0);
+    const driverId = trip[3];
+    const vehicleId = trip[4];
+    const fuelPrice = parseFloat(trip[20] || 0);
 
-    // جلب مصاريف الرحلة لحساب المتبقّي قبل التأكيد
-    Swal.fire({ title: 'جاري حساب التصفية...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
-    let totalExpenses = 0;
+    // جلب عهدة السائق الحالية (المبلغ اللي ماسكه فعلًا، شامل المترحّل)
+    Swal.fire({ title: 'جاري تحميل بيانات العهدة...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+    let custody = 0;
+    let driverName = lookupDriverName(driverId);
     try {
-        const res = await callBackend("getTripExpenses", { Trip_ID: tripId });
-        const expensesList = res?.data || [];
-        totalExpenses = expensesList.reduce((sum, ex) => sum + (parseFloat(ex.amount) || 0), 0);
+        const res = await callBackend("getDriversList");
+        const drv = (res?.data || []).find(d => d.driver_id === driverId);
+        custody = drv ? (parseFloat(drv.current_advance) || 0) : 0;
+        if (drv && drv.full_name) driverName = drv.full_name;
     } catch (err) {
         Swal.close();
         handleStandardError(err);
         return;
     }
 
-    const remaining = advance - totalExpenses;
-    const remainingColor = remaining < 0 ? '#ef4444' : '#22c55e';
+    const catOptions = SETTLE_EXPENSE_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join("");
 
-    const { value: settlementType } = await Swal.fire({
+    const result = await Swal.fire({
         title: `تصفية وإغلاق الرحلة ${tripId}`,
+        width: 600,
         html: `
-            <div class="text-right" style="line-height:2.1">
-                <div>العهدة: <b>${advance.toFixed(2)} ج.م</b></div>
-                <div>إجمالي المصاريف: <b>${totalExpenses.toFixed(2)} ج.م</b></div>
-                <div>المتبقّي مع السائق: <b style="color:${remainingColor}">${remaining.toFixed(2)} ج.م</b></div>
-                <hr style="margin:12px 0">
-                <label style="display:block;margin-bottom:8px;cursor:pointer"><input type="radio" name="settle" value="RETURNED" checked> رجّع المتبقّي للمحاسب</label>
-                <label style="display:block;cursor:pointer"><input type="radio" name="settle" value="CARRIED_OVER"> ترحيل المتبقّي مع السائق للرحلة الجاية</label>
+            <div class="text-right" style="line-height:1.9;font-size:14px">
+                <div>السائق: <b>${driverName}</b></div>
+                <div>العهدة الحالية مع السائق: <b id="settle-custody" style="color:#0ea5e9">${custody.toFixed(2)} ج.م</b></div>
+                <hr style="margin:10px 0">
+                <div style="font-weight:bold;margin-bottom:6px">مصاريف الرحلة (سجّلها قبل الإغلاق):</div>
+                <div id="settle-rows"></div>
+                <button type="button" id="settle-add-row" style="background:#334155;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;margin:4px 0">+ إضافة مصروف</button>
+                <hr style="margin:10px 0">
+                <div>إجمالي المصاريف الجديدة: <b id="settle-newexp">0.00 ج.م</b></div>
+                <div>المتبقّي بعد التصفية: <b id="settle-remaining" style="color:#22c55e">${custody.toFixed(2)} ج.م</b></div>
+                <hr style="margin:10px 0">
+                <label style="display:block;margin-bottom:6px;cursor:pointer"><input type="radio" name="settle-type" value="RETURNED" checked> رجّع المتبقّي للمحاسب (العهدة تبقى صفر)</label>
+                <label style="display:block;cursor:pointer"><input type="radio" name="settle-type" value="CARRIED_OVER"> ترحيل المتبقّي مع السائق للرحلة الجاية</label>
             </div>
         `,
         showCancelButton: true,
@@ -641,24 +657,97 @@ window.triggerSettlement = async function(tripId, currentVersion) {
         cancelButtonText: 'إلغاء',
         confirmButtonColor: '#22c55e',
         cancelButtonColor: '#334155',
+        didOpen: () => {
+            const rowsBox = document.getElementById("settle-rows");
+
+            const recalc = () => {
+                let newExp = 0;
+                rowsBox.querySelectorAll(".settle-row").forEach(r => {
+                    newExp += parseFloat(r.querySelector(".r-amt").value) || 0;
+                });
+                const rem = custody - newExp;
+                document.getElementById("settle-newexp").innerText = newExp.toFixed(2) + " ج.م";
+                const remEl = document.getElementById("settle-remaining");
+                remEl.innerText = rem.toFixed(2) + " ج.م";
+                remEl.style.color = rem < 0 ? "#ef4444" : "#22c55e";
+            };
+
+            const addRow = () => {
+                const div = document.createElement("div");
+                div.className = "settle-row";
+                div.style.cssText = "display:flex;gap:6px;margin-bottom:6px;align-items:center";
+                div.innerHTML = `
+                    <select class="r-cat" style="flex:1;padding:6px;border-radius:8px;border:1px solid #cbd5e1">${catOptions}</select>
+                    <input class="r-amt" type="number" step="0.01" min="0" placeholder="المبلغ" style="width:90px;padding:6px;border-radius:8px;border:1px solid #cbd5e1">
+                    <input class="r-lit" type="number" step="0.1" min="0" placeholder="لتر" style="width:64px;padding:6px;border-radius:8px;border:1px solid #cbd5e1;display:none">
+                    <button type="button" class="r-del" style="color:#ef4444;border:none;background:none;font-size:20px;cursor:pointer">&times;</button>
+                `;
+                rowsBox.appendChild(div);
+
+                const catSel = div.querySelector(".r-cat");
+                const litInp = div.querySelector(".r-lit");
+                const toggleLit = () => { litInp.style.display = (catSel.value === ROAD_FUEL_CATEGORY) ? "" : "none"; };
+                toggleLit();
+                catSel.addEventListener("change", toggleLit);
+                div.querySelector(".r-amt").addEventListener("input", recalc);
+                div.querySelector(".r-del").addEventListener("click", () => { div.remove(); recalc(); });
+            };
+
+            document.getElementById("settle-add-row").addEventListener("click", addRow);
+        },
         preConfirm: () => {
-            const sel = document.querySelector('input[name="settle"]:checked');
-            return sel ? sel.value : 'RETURNED';
+            const rows = [];
+            let invalid = false;
+            document.querySelectorAll("#settle-rows .settle-row").forEach(r => {
+                const category = r.querySelector(".r-cat").value;
+                const amount = parseFloat(r.querySelector(".r-amt").value) || 0;
+                const liters = parseFloat(r.querySelector(".r-lit").value) || 0;
+                if (amount <= 0) { invalid = true; return; }
+                rows.push({ category, amount, liters });
+            });
+            if (invalid) {
+                Swal.showValidationMessage("كل مصروف لازم يكون مبلغه أكبر من صفر (أو احذف الصف الفاضي)");
+                return false;
+            }
+            const sel = document.querySelector('input[name="settle-type"]:checked');
+            return { rows, settlementType: sel ? sel.value : 'RETURNED' };
         }
     });
 
-    if (!settlementType) return;
+    if (!result.isConfirmed || !result.value) return;
+    const { rows, settlementType } = result.value;
 
-    Swal.fire({ title: 'جاري الإغلاق...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+    Swal.fire({ title: 'جاري التسجيل والإغلاق...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
 
     try {
+        // 1) تسجيل المصاريف الجديدة (كل مصروف بيتخصم من عهدة السائق)
+        for (const row of rows) {
+            await callBackend("addExpense", {
+                Trip_ID: tripId,
+                Driver_ID: driverId,
+                Vehicle_ID: vehicleId,
+                Expense_Category: row.category,
+                Amount: row.amount,
+                Fuel_Liters: row.liters || 0,
+                Fuel_Price: fuelPrice
+            });
+        }
+
+        // 2) التصفية والإغلاق على العهدة الفعلية المتبقّية
         const response = await callBackend("settleTripFinancials", {
             Trip_ID: tripId,
             Settlement_Type: settlementType,
             Version_Number: currentVersion
         });
 
-        Swal.fire({ icon: 'success', title: 'تمت التصفية', text: response.message || 'تم إغلاق الرحلة بنجاح', timer: 2200, showConfirmButton: false });
+        const dd = response?.data || {};
+        Swal.fire({
+            icon: 'success',
+            title: 'تمت التصفية والإغلاق',
+            html: `المتبقّي: <b>${(dd.remaining_advance ?? 0)} ج.م</b><br>${settlementType === "RETURNED" ? "رجع للمحاسب" : "اترحّل مع السائق"}`,
+            timer: 2600,
+            showConfirmButton: false
+        });
         loadTripsData(true);
         refreshDashboard();
     } catch (err) {
