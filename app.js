@@ -208,14 +208,14 @@ async function callBackend(action, parameters = {}) {
     // ✅ إزالة action من الـ URL
     // url.searchParams.append("action", action);
 
-    // ✅ إرسال Session Token في الـ URL
+    // ✅ Irsal Session Token fi POST body (mish URL)
     if (action !== "login") {
-        url.searchParams.append("Session_Token", state.user.token || "null");
-        url.searchParams.append("User_ID", state.user.id || "GUEST");
-        url.searchParams.append("User_Role", state.user.role || "Operations");
+        parameters["Session_Token"] = state.user.token || "null";
+        parameters["User_ID"] = state.user.id || "GUEST";
+        parameters["User_Role"] = state.user.role || "Operations";
     }
 
-    // ✅ بناء FormData لإرسال كل البيانات (بما فيها action)
+    // ✅ bina2 FormData li'irsal kull al-bayanat
     const formData = new FormData();
     formData.append("action", action); // 🔥 أهم خطوة
 

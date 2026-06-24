@@ -42,7 +42,8 @@ function initializeSystem() {
   }
   
   if (!adminExists) {
-    let hashedPassword = hashPassword("Admin@123");
+    let tempPassword = generateRandomPassword();
+    let hashedPassword = hashPassword(tempPassword);
     let userId = generateUserId(usersSheet);
     let now = new Date().toISOString();
     
@@ -64,7 +65,7 @@ function initializeSystem() {
     
     console.log("✅ تم إنشاء مستخدم Admin افتراضي:");
     console.log(`   👤 Username: admin`);
-    console.log(`   🔑 Password: Admin@123`);
+    console.log(`   🔑 Password: ${tempPassword}`);
     console.log(`   ⚠️  يُرجى تغيير كلمة المرور فور تسجيل الدخول!`);
   } else {
     console.log("ℹ️ مستخدم Admin موجود مسبقاً.");
@@ -174,6 +175,15 @@ function authService_login(params) {
     return { success: false, message: "يرجى إدخال اسم المستخدم وكلمة المرور." };
   }
   
+  // حماية Brute Force: 5 محاولات فاشلة = قفل 15 دقيقة
+  let cache = CacheService.getScriptCache();
+  let failKey = "login_fail_" + username;
+  let failCount = parseInt(cache.get(failKey) || "0");
+  if (failCount >= 5) {
+    endTimer("authService_login");
+    return { success: false, message: "تم قفل الحساب مؤقتاً بسبب كثرة المحاولات الفاشلة. حاول بعد 15 دقيقة." };
+  }
+  
   let data = getCachedData("Users");
   
   for (let i = 1; i < data.length; i++) {
@@ -188,6 +198,9 @@ function authService_login(params) {
     
     if (dbUsername === username) {
       if (verifyPassword(password, dbPasswordHash)) {
+        // تصفير عداد المحاولات الفاشلة عند النجاح
+        cache.remove(failKey);
+        
         let token = generateSessionToken();
         let expiry = new Date(Date.now() + SESSION_TIMEOUT_MS);
         let now = new Date().toISOString();
@@ -210,6 +223,8 @@ function authService_login(params) {
           message: `مرحباً ${data[i][1]}`
         };
       } else {
+        // تسجيل محاولة فاشلة
+        cache.put(failKey, (failCount + 1).toString(), 900); // 15 دقيقة
         endTimer("authService_login");
         return { success: false, message: "كلمة المرور غير صحيحة." };
       }
@@ -332,8 +347,11 @@ function authService_changePassword(params, requestingUserId) {
   let newPassword = params.New_Password;
   let oldPassword = params.Old_Password;
   
-  if (!newPassword || newPassword.length < 6) {
-    return { success: false, message: "كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل." };
+  if (!newPassword || newPassword.length < 8) {
+    return { success: false, message: "كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل." };
+  }
+  if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+    return { success: false, message: "كلمة المرور يجب أن تحتوي على حرف كبير وحرف صغير ورقم." };
   }
   
   let data = getCachedData("Users");
@@ -418,6 +436,15 @@ function generateSessionToken() {
   return `SESS-${timestamp}-${randomHex}-${randomPart.substring(0, 8)}`;
 }
 
+function generateRandomPassword() {
+  let chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  let result = "";
+  for (let i = 0; i < 12; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result + "@1"; // يضمن حرف كبير + رقم + رمز
+}
+
 function generateUserId(sheet) {
   let data = sheet.getDataRange().getValues();
   let maxNum = 0;
@@ -453,29 +480,3 @@ function authService_getUserFromToken(token) {
   return null;
 }
 
-// ==========================================
-// دوال اختبار
-// ==========================================
-
-function testHashSimple() {
-  var password = "Admin@123";
-  var hash = hashPassword(password);
-  Logger.log("Password: " + password);
-  Logger.log("Hash: " + hash);
-}
-
-function testVerify() {
-  var plain = "Admin@123";
-  var storedHash = "e86f78a8a3caf0b60d8e74e5942aa6d86dc150cd3c03338aef25b7d2d7e3acc7";
-  var result = verifyPassword(plain, storedHash);
-  Logger.log("نتيجة التحقق: " + result);
-}
-
-function testLogin() {
-  var params = {
-    Username: "admin",
-    Password: "Admin@123"
-  };
-  var result = authService_login(params);
-  Logger.log(JSON.stringify(result));
-}

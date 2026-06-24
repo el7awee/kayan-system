@@ -55,6 +55,19 @@ function routeRequest(e, method, userId, userRole) {
     }, 403);
   }
   
+  // تطبيق Rate Limiting حسب الدور الفعلي
+  let rateKey = "rate_" + realUserId + "_min_" + new Date().getMinutes();
+  let rateCount = CacheService.getScriptCache().get(rateKey);
+  let maxAllowed = RATE_LIMITS[realUserRole] || 60;
+  if (rateCount && parseInt(rateCount) >= maxAllowed) {
+    return createJsonResponse({
+      "success": false, "error_code": "RATE_LIMIT_EXCEEDED",
+      "message": `تجاوزت الحد الأقصى للطلبات (${maxAllowed}/دقيقة).`,
+      "timestamp": new Date().toISOString()
+    }, 429);
+  }
+  CacheService.getScriptCache().put(rateKey, (parseInt(rateCount || "0") + 1).toString(), 60);
+  
   let isWriteOperation = checkIfWriteOperation(action);
   let lock = LockService.getScriptLock();
   
@@ -328,8 +341,11 @@ function userService_createUser(ss, params, requestingUserId) {
     return { "success": false, "message": "جميع الحقول مطلوبة." };
   }
   
-  if (password.length < 6) {
-    return { "success": false, "message": "كلمة المرور يجب أن تكون 6 أحرف على الأقل." };
+  if (password.length < 8) {
+    return { "success": false, "message": "كلمة المرور يجب أن تكون 8 أحرف على الأقل." };
+  }
+  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+    return { "success": false, "message": "كلمة المرور يجب أن تحتوي على حرف كبير وحرف صغير ورقم." };
   }
   
   for (let i = 1; i < data.length; i++) {
@@ -517,8 +533,11 @@ function userService_resetPassword(ss, params) {
     return { "success": false, "message": "Target_User_ID مطلوب." };
   }
   
-  if (newPassword.length < 6) {
-    return { "success": false, "message": "كلمة المرور 6 أحرف على الأقل." };
+  if (newPassword.length < 8) {
+    return { "success": false, "message": "كلمة المرور 8 أحرف على الأقل." };
+  }
+  if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+    return { "success": false, "message": "كلمة المرور يجب أن تحتوي على حرف كبير وحرف صغير ورقم." };
   }
   
   let data = sheet.getDataRange().getValues();
