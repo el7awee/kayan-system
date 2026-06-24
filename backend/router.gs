@@ -118,6 +118,9 @@ function routeRequest(e, method, userId, userRole) {
       case 'deleteVehicle':
         resultPayload = vehicleService_deleteVehicle(ss, e.parameter);
         break;
+      case 'bulkImportVehicles':
+        resultPayload = vehicleService_bulkImport(ss, e.parameter, realUserId);
+        break;
       
       case 'getDriversList':
         resultPayload = driverService_getDrivers(ss);

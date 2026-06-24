@@ -42,6 +42,50 @@ const state = {
 // متغير للتحميل مرة واحدة
 let dropdownsLoaded = false;
 
+// ─── Toast System ───
+function showToast(message, type = 'info', duration = 3500) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+    const icons = { success: 'fa-circle-check', error: 'fa-circle-xmark', warning: 'fa-triangle-exclamation', info: 'fa-circle-info' };
+    const el = document.createElement('div');
+    el.className = `toast toast-${type}`;
+    el.innerHTML = `<i class="fa-solid ${icons[type] || icons.info}"></i> ${message}`;
+    container.appendChild(el);
+    setTimeout(() => {
+        el.classList.add('toast-out');
+        setTimeout(() => el.remove(), 300);
+    }, duration);
+}
+
+// ─── Chart Instances ───
+let chartExpenses = null;
+let chartBalance = null;
+
+// ─── Animated Counter ───
+function animateCounter(el, target, suffix = '', duration = 800) {
+    if (!el) return;
+    const start = parseFloat(el.innerText.replace(/[^0-9.-]/g, '')) || 0;
+    const diff = target - start;
+    const steps = 30;
+    const stepTime = duration / steps;
+    let current = 0;
+    const isFloat = target % 1 !== 0 || start % 1 !== 0;
+    const tick = () => {
+        current++;
+        const progress = Math.min(current / steps, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const val = start + diff * eased;
+        el.innerText = (isFloat ? val.toFixed(2) : Math.round(val)) + suffix;
+        if (current < steps) setTimeout(tick, stepTime);
+    };
+    tick();
+}
+
 // ─── 2️⃣ إدارة الأحداث والتشغيل الأولي ───
 document.addEventListener("DOMContentLoaded", () => {
     initApp();
@@ -82,6 +126,7 @@ function initApp() {
             });
         }
     }
+    initAllTableSearch();
     switchView("view-login");
 }
 
@@ -109,7 +154,16 @@ function bindUIEvents() {
         }
     });
 
+    // كبس KPIs — ضغطة ع الكارت توديك لصفحته
+    document.getElementById("card-active-trips")?.addEventListener("click", () => { switchView("view-trips"); loadTripsData(); });
+    document.getElementById("card-pending")?.addEventListener("click", () => { switchView("view-trips"); loadTripsData(); });
+    document.getElementById("card-expenses")?.addEventListener("click", () => { switchView("view-expenses"); loadDropdowns(); });
+    document.getElementById("card-fuel")?.addEventListener("click", () => { switchView("view-fuel"); loadFuelData(); });
+    document.getElementById("card-notifications")?.addEventListener("click", () => { switchView("view-notifications"); loadNotificationsData(); });
+    document.getElementById("card-balance")?.addEventListener("click", () => { switchView("view-balance"); loadBalanceData(); });
+
     // أزرار التحديث
+    document.getElementById("btn-refresh-dashboard")?.addEventListener("click", refreshDashboard);
     document.getElementById("btn-refresh-trips")?.addEventListener("click", () => loadTripsData(true));
     document.getElementById("btn-refresh-fuel")?.addEventListener("click", loadFuelTransactions);
     document.getElementById("btn-refresh-vehicles")?.addEventListener("click", () => loadVehiclesData(true));
@@ -131,6 +185,7 @@ function bindUIEvents() {
 
     // إدارة
     document.getElementById("btn-add-vehicle")?.addEventListener("click", handleAddVehicle);
+    document.getElementById("btn-bulk-import")?.addEventListener("click", handleBulkImport);
     document.getElementById("btn-add-driver")?.addEventListener("click", handleAddDriver);
     document.getElementById("btn-add-client")?.addEventListener("click", handleAddClient);
 
@@ -189,16 +244,11 @@ function updateSidebarActiveState(viewId) {
         "view-settings": "nav-settings"
     };
 
-    Object.values(navMapping).forEach(navId => {
-        const btn = document.getElementById(navId);
-        if (btn) btn.classList.remove("bg-slate-900", "text-amber-500", "border-r-2", "border-amber-500");
-    });
+    document.querySelectorAll(".nav-item").forEach(btn => btn.classList.remove("active"));
 
     const activeNavId = navMapping[viewId];
     const activeBtn = document.getElementById(activeNavId);
-    if (activeBtn) {
-        activeBtn.classList.add("bg-slate-900", "text-amber-500", "border-r-2", "border-amber-500");
-    }
+    if (activeBtn) activeBtn.classList.add("active");
 }
 
 // ─── 4️⃣ طبقة الاتصال بالخادم (معدلة) ───
@@ -329,6 +379,10 @@ async function handleLoginSubmit(e) {
 // ─── 5️⃣-ب: لوحة التحكم ───
 async function refreshDashboard() {
     try {
+        // Update timestamp
+        const now = new Date();
+        document.getElementById("dash-last-update").innerText = now.toLocaleString('ar-EG');
+
         // طلب واحد مجمّع بدل 5 طلبات منفصلة (تحسين السرعة)
         const dash = await callBackend("getDashboard", { Limit: 20 });
         const d = dash?.data || {};
@@ -340,8 +394,10 @@ async function refreshDashboard() {
 
         if (tripsRes?.data) {
             const trips = tripsRes.data;
-            document.getElementById("stat-active-trips").innerText = trips.filter(t => t[7] === "OPEN").length;
-            document.getElementById("stat-pending-settlements").innerText = trips.filter(t => t[7] === "OPEN").length;
+            const activeCount = trips.filter(t => t[7] === "OPEN").length;
+            const closedCount = trips.filter(t => t[7] === "CLOSED").length;
+            animateCounter(document.getElementById("stat-active-trips"), activeCount);
+            animateCounter(document.getElementById("stat-pending-settlements"), closedCount);
             state.cache.trips = trips;
             state.activeTrips = trips;
         }
@@ -349,19 +405,19 @@ async function refreshDashboard() {
         if (fuelRes?.data) {
             const bal = fuelRes.data.current_balance || 0;
             const el = document.getElementById("stat-fuel-balance");
-            el.innerText = bal.toFixed(2) + " ج.م";
+            animateCounter(el, bal, ' ج.م');
             el.style.color = bal < 0 ? "#ef4444" : "#22c55e";
         }
 
         if (balanceRes?.data) {
             const myBalance = balanceRes.data.current_balance || 0;
-            document.getElementById("stat-my-balance").innerText = myBalance.toFixed(2) + " ج.م";
+            animateCounter(document.getElementById("stat-my-balance"), myBalance, ' ج.م');
             state.myBalance = myBalance;
         }
 
         if (notifRes?.data) {
             const unreadCount = notifRes.data.unread_count || 0;
-            document.getElementById("stat-notifications").innerText = unreadCount;
+            animateCounter(document.getElementById("stat-notifications"), unreadCount);
             state.cache.notifications = notifRes.data.notifications || [];
             
             const notifications = notifRes.data.notifications || [];
@@ -370,17 +426,36 @@ async function refreshDashboard() {
             if (unread.length > 0) {
                 bar.classList.remove("hidden");
                 document.getElementById("notification-bar-message").innerText = unread[0].title + ": " + unread[0].message;
+                // Update notification badge in sidebar
+                const badge = document.getElementById("notif-badge");
+                if (badge) { badge.innerText = unread.length; badge.classList.remove("hidden"); }
             } else {
                 bar.classList.add("hidden");
+                const badge = document.getElementById("notif-badge");
+                if (badge) badge.classList.add("hidden");
             }
         }
 
         if (expensesRes?.data) {
             const monthlyTotal = expensesRes.data.total || 0;
-            document.getElementById("stat-total-expenses").innerText = monthlyTotal.toFixed(2) + " ج.م";
+            animateCounter(document.getElementById("stat-total-expenses"), monthlyTotal, ' ج.م');
+            // Store for chart
+            window._lastExpensesData = expensesRes.data;
         }
 
+        // Store balance data for chart
+        if (balanceRes?.data) {
+            window._lastBalanceData = balanceRes.data;
+        }
+
+        // Load fuel transactions first so fuel chart has data
         await loadFuelTransactions();
+
+        // Store fuel data for chart
+        window._lastFuelData = buildFuelChartData(state.fuelTransactions || []);
+
+        // Render charts
+        renderCharts(window._lastExpensesData, window._lastFuelData);
 
     } catch (err) {
         console.error("فشل تحديث لوحة التحكم:", err);
@@ -511,10 +586,10 @@ function renderTripsTable(trips) {
         const currentVersion = trip[12] || 1;
         const role = state.user.role;
 
-        let badgeClass = "bg-slate-800 text-slate-400";
+        let badgeClass = "badge badge-pending";
         let statusLabel = status;
-        if (status === "OPEN") { badgeClass = "bg-sky-500/10 text-sky-400 border border-sky-500/20"; statusLabel = "مفتوحة"; }
-        if (status === "CLOSED") { badgeClass = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"; statusLabel = "مغلقة"; }
+        if (status === "OPEN") { badgeClass = "badge badge-open"; statusLabel = "مفتوحة"; }
+        if (status === "CLOSED") { badgeClass = "badge badge-closed"; statusLabel = "مغلقة"; }
 
         let actionButtons = "";
         if (status === "OPEN") {
@@ -530,7 +605,7 @@ function renderTripsTable(trips) {
                 actionButtons = `<span class="text-xs text-muted">—</span>`;
             }
         } else {
-            actionButtons = `<span class="text-xs text-emerald-500 font-semibold"><i class="fa-solid fa-lock ml-1"></i> مغلقة</span>`;
+            actionButtons = `<span class="badge badge-closed"><i class="fa-solid fa-lock text-[10px]"></i> مغلقة</span>`;
         }
 
         const row = document.createElement("tr");
@@ -548,6 +623,7 @@ function renderTripsTable(trips) {
 
     tbody.innerHTML = "";
     tbody.appendChild(fragment);
+    reapplyTableFilter('table-trips-body');
 }
 
 window.editTrip = async function(tripId) {
@@ -846,8 +922,8 @@ async function loadFuelData() {
     try {
         const response = await callBackend("getFuelBalance");
         if (response && response.data) {
-            document.getElementById("fuel-current-balance").innerText = (response.data.current_balance || 0).toFixed(2) + " ج.م";
-            document.getElementById("fuel-current-price").innerText = (response.data.fuel_price_per_liter || 0).toFixed(2) + " ج.م";
+            animateCounter(document.getElementById("fuel-current-balance"), response.data.current_balance || 0, ' ج.م');
+            animateCounter(document.getElementById("fuel-current-price"), response.data.fuel_price_per_liter || 0, ' ج.م');
             document.getElementById("fuel-last-updated").innerText = response.data.last_updated ? new Date(response.data.last_updated).toLocaleString('ar-EG') : "--";
         }
         await loadFuelTransactions();
@@ -857,9 +933,13 @@ async function loadFuelData() {
 }
 
 async function loadFuelTransactions() {
-    const tbody = document.getElementById("table-fuel-transactions") || document.getElementById("table-fuel-body");
-    if (!tbody) return;
-    tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
+    // Show loading in both tables
+    const loadingRow = `<tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
+    const tb1 = document.getElementById("table-fuel-transactions");
+    const tb2 = document.getElementById("table-fuel-body");
+    if (tb1) tb1.innerHTML = loadingRow;
+    if (tb2) tb2.innerHTML = loadingRow;
+    if (!tb1 && !tb2) return;
 
     try {
         const response = await callBackend("getFuelTransactions", { Limit: 20 });
@@ -868,44 +948,174 @@ async function loadFuelTransactions() {
             renderFuelTransactions(response.data);
         }
     } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-rose-500">فشل جلب البيانات</td></tr>`;
+        const errRow = `<tr><td colspan="6" class="p-8 text-center text-rose-500">فشل جلب البيانات</td></tr>`;
+        if (tb1) tb1.innerHTML = errRow;
+        if (tb2) tb2.innerHTML = errRow;
     }
 }
 
 function renderFuelTransactions(transactions) {
-    const tbody = document.getElementById("table-fuel-transactions") || document.getElementById("table-fuel-body");
-    if (!tbody) return;
-    tbody.innerHTML = "";
+    const tbodies = [
+        document.getElementById("table-fuel-transactions"),
+        document.getElementById("table-fuel-body")
+    ].filter(Boolean);
+
+    if (tbodies.length === 0) return;
+
+    const emptyRow = `<tr><td colspan="6" class="p-8 text-center text-muted">لا توجد حركات</td></tr>`;
 
     if (!transactions || transactions.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-muted">لا توجد حركات</td></tr>`;
+        tbodies.forEach(tb => { tb.innerHTML = emptyRow; });
         return;
     }
 
-    const fragment = document.createDocumentFragment();
+    const typeMap = {
+        'ADD': '➕ إضافة',
+        'INITIAL': '⛽ بداية رحلة',
+        'ROAD': '🛣️ جاز طريق'
+    };
+
+    const fragment1 = document.createDocumentFragment();
+    const fragment2 = document.createDocumentFragment();
 
     transactions.forEach(t => {
-        const row = document.createElement("tr");
-        row.className = "table-row hover:bg-hover transition";
-        const typeMap = {
-            'ADD': '➕ إضافة',
-            'INITIAL': '⛽ بداية رحلة',
-            'ROAD': '🛣️ جاز طريق'
-        };
-        row.innerHTML = `
-            <td class="p-4 text-xs">${t.created_at ? new Date(t.created_at).toLocaleString('ar-EG') : ''}</td>
-            <td class="p-4 text-xs">${t.vehicle_id || '--'}</td>
-            <td class="p-4 text-xs">${typeMap[t.transaction_type] || t.transaction_type}</td>
-            <td class="p-4 text-xs">${t.amount_liters || 0}</td>
-            <td class="p-4 text-xs ${t.amount_egp < 0 ? 'text-rose-400' : 'text-emerald-400'}">${t.amount_egp || 0}</td>
-            <td class="p-4 text-xs">${t.source || '--'}</td>
+        const cells = `
+            <td class="p-3 text-xs">${t.created_at ? new Date(t.created_at).toLocaleString('ar-EG') : ''}</td>
+            <td class="p-3 text-xs">${t.vehicle_id || '--'}</td>
+            <td class="p-3 text-xs">${typeMap[t.transaction_type] || t.transaction_type}</td>
+            <td class="p-3 text-xs">${t.amount_liters || 0}</td>
+            <td class="p-3 text-xs ${t.amount_egp < 0 ? 'text-rose-400' : 'text-emerald-400'}">${t.amount_egp || 0}</td>
+            <td class="p-3 text-xs">${t.source || '--'}</td>
         `;
-        fragment.appendChild(row);
+        const row1 = document.createElement("tr");
+        row1.className = "table-row hover:bg-hover transition";
+        row1.innerHTML = cells;
+        fragment1.appendChild(row1);
+
+        const row2 = document.createElement("tr");
+        row2.className = "table-row hover:bg-hover transition";
+        row2.innerHTML = cells;
+        fragment2.appendChild(row2);
     });
 
-    tbody.innerHTML = "";
-    tbody.appendChild(fragment);
+    tbodies.forEach(tb => { tb.innerHTML = ""; });
+    if (tbodies[0]) tbodies[0].appendChild(fragment1);
+    if (tbodies[1]) tbodies[1].appendChild(fragment2);
+    reapplyTableFilter('table-fuel-body');
+    reapplyTableFilter('table-fuel-transactions');
 }
+
+// ─── بناء بيانات شارت البنزينة (دائري حسب العربية) ───
+function buildFuelChartData(transactions) {
+    let byVehicle = {};
+    let vehicleLabels = {};
+
+    for (let t of transactions) {
+        let lts = parseFloat(t.amount_liters) || 0;
+        if (lts <= 0) continue;
+        let vid = t.vehicle_id || 'غير معروف';
+        if (!byVehicle[vid]) { byVehicle[vid] = 0; }
+        byVehicle[vid] += lts;
+        vehicleLabels[vid] = vid;
+    }
+
+    // نرتب تنازلي وناخد أول 6
+    let sorted = Object.entries(byVehicle).sort((a, b) => b[1] - a[1]);
+    let labels = [];
+    let values = [];
+    let others = 0;
+    sorted.forEach(([vid, sum], i) => {
+        if (i < 5) { labels.push(vid); values.push(sum); }
+        else { others += sum; }
+    });
+    if (others > 0) { labels.push('باقي'); values.push(others); }
+
+    return { labels, values };
+}
+
+// ─── 5️⃣-ز1: الرسوم البيانية (Chart.js) ───
+function renderCharts(expensesData, fuelData) {
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    const gridColor = isDark ? 'rgba(148,163,184,0.1)' : 'rgba(0,0,0,0.06)';
+    const textColor = isDark ? '#94a3b8' : '#64748b';
+    const orange = '#f97316';
+    const green = '#10b981';
+
+    // Expense chart (line)
+    const expCtx = document.getElementById('chart-expenses');
+    if (expCtx) {
+        if (chartExpenses) chartExpenses.destroy();
+        const labels = expensesData?.dates || Array.from({length: 31}, (_, i) => (i + 1).toString());
+        const values = expensesData?.values || Array(31).fill(0);
+        chartExpenses = new Chart(expCtx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'المصروفات',
+                    data: values,
+                    borderColor: orange,
+                    backgroundColor: 'rgba(249,115,22,0.08)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 3,
+                    pointBackgroundColor: orange,
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } } },
+                    y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 }, callback: v => v + ' ج.م' } }
+                }
+            }
+        });
+    }
+
+    // Fuel chart (doughnut — حسب العربية)
+    const fuelCtx = document.getElementById('chart-fuel');
+    if (fuelCtx) {
+        if (chartBalance) chartBalance.destroy();
+        const labels = fuelData?.labels?.length ? fuelData.labels : ['لا توجد بيانات'];
+        const values = fuelData?.values?.length ? fuelData.values : [1];
+        const colors = ['#10b981','#f59e0b','#f97316','#3b82f6','#8b5cf6','#64748b'];
+        chartBalance = new Chart(fuelCtx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: colors.slice(0, labels.length),
+                    borderWidth: 0,
+                    hoverOffset: 6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: textColor, font: { size: 10 }, padding: 8 }
+                    }
+                }
+            }
+        });
+    }
+}
+
+// تحديث الرسوم البيانية عند تغيير الثيم
+const origToggleTheme = toggleTheme;
+toggleTheme = function() {
+    origToggleTheme();
+    const expData = window._lastExpensesData;
+    const fuelData = window._lastFuelData;
+    if (expData || fuelData) renderCharts(expData, fuelData);
+};
 
 async function handleAddFuelBalance() {
     const { value: amount } = await Swal.fire({
@@ -1007,6 +1217,57 @@ function renderVehiclesTable(vehicles) {
 
     tbody.innerHTML = "";
     tbody.appendChild(fragment);
+    reapplyTableFilter('table-vehicles-body');
+}
+
+async function handleBulkImport() {
+    const confirm = await Swal.fire({
+        title: 'استيراد العربيات',
+        text: 'هل تريد استيراد 22 عربية (جامبو + تريلا) إلى النظام؟',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، استيراد',
+        cancelButtonText: 'إلغاء'
+    });
+    if (!confirm.isConfirmed) return;
+
+    Swal.fire({ title: 'جاري الاستيراد...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+    try {
+        const res = await callBackend('bulkImportVehicles', {
+            Vehicles: `جامبو|2006|ر ي ل 7619
+جامبو|2009|ر ق ل 5713
+جامبو|2010|ر ل ع 2768
+جامبو|2010|ر ج أ 6346
+جامبو|2011|ر ط ب 5723
+جامبو|2013|ر ي ل 8463
+جامبو|2013|ر هـ ص 6419
+جامبو|2014|ر ي ل 5178
+جامبو|2015|ر هـ ب 8795
+جامبو|2021|ر ق ل 1926
+جامبو|2021|ر ق ل 1765
+تريلا|2008|ر ج أ 7678
+تريلا|2010|ر ج أ 8115
+تريلا|2010|ر ي ل 7364
+تريلا|2011|ر ل ع 2164
+تريلا|2013|ر ع م 9724
+تريلا|2013|ر ص ق 5483
+تريلا|2015|ر ب ق 9829
+تريلا|2015|ر أ ق 8798
+تريلا|2018|ر ج أ 8565
+تريلا|2018|ر ج أ 8548
+تريلا|2019|ر و ل 3759`
+        });
+
+        if (res?.success) {
+            Swal.fire({ icon: 'success', title: 'تم', text: `تم إضافة ${res.data?.added || 22} عربية بنجاح` });
+            loadVehiclesData(true);
+        } else {
+            Swal.fire({ icon: 'error', title: 'خطأ', text: res?.message || 'فشل الاستيراد' });
+        }
+    } catch (err) {
+        Swal.fire({ icon: 'error', title: 'خطأ', text: err.message });
+    }
 }
 
 async function handleAddVehicle() {
@@ -1170,6 +1431,7 @@ function renderDriversTable(drivers) {
 
     tbody.innerHTML = "";
     tbody.appendChild(fragment);
+    reapplyTableFilter('table-drivers-body');
 }
 
 async function handleAddDriver() {
@@ -1329,6 +1591,7 @@ function renderClientsTable(clients) {
 
     tbody.innerHTML = "";
     tbody.appendChild(fragment);
+    reapplyTableFilter('table-clients-body');
 }
 
 async function handleAddClient() {
@@ -1462,7 +1725,7 @@ async function loadBalanceData(forceRefresh = false) {
             ]);
 
             if (userBalanceRes?.data) {
-                document.getElementById("balance-my-balance").innerText = (userBalanceRes.data.current_balance || 0).toFixed(2) + " ج.م";
+                animateCounter(document.getElementById("balance-my-balance"), userBalanceRes.data.current_balance || 0, ' ج.م');
             }
 
             if (allTransRes?.data) {
@@ -1481,7 +1744,7 @@ async function loadBalanceData(forceRefresh = false) {
         ]);
 
         if (myBalanceRes?.data) {
-            document.getElementById("balance-my-balance").innerText = (myBalanceRes.data.current_balance || 0).toFixed(2) + " ج.م";
+            animateCounter(document.getElementById("balance-my-balance"), myBalanceRes.data.current_balance || 0, ' ج.م');
         }
 
         if (allTransRes?.data) {
@@ -1551,6 +1814,7 @@ function renderBalanceTable(transactions) {
 
     tbody.innerHTML = "";
     tbody.appendChild(fragment);
+    reapplyTableFilter('table-balance-body');
 }
 
 async function handleAddBalance() {
@@ -2002,6 +2266,49 @@ window.deleteUser = async function(userId) {
     }
 };
 
+// ─── 5️⃣-ن: البحث والفلترة للجداول ───
+const _tableFilters = {};
+
+function initTableSearch(searchId, filterId, tableBodyId) {
+    const searchInput = document.getElementById(searchId);
+    const filterSelect = document.getElementById(filterId);
+    const key = tableBodyId;
+
+    const doFilter = () => {
+        const tbody = document.getElementById(key);
+        if (!tbody) return;
+        const q = searchInput ? searchInput.value.toLowerCase().trim() : '';
+        const fv = filterSelect ? filterSelect.value : '';
+        const rows = tbody.querySelectorAll('tr');
+        rows.forEach(row => {
+            if (row.querySelector('td[colspan]')) return;
+            const text = row.textContent.toLowerCase();
+            const matchSearch = !q || text.includes(q);
+            const matchFilter = !fv || text.includes(fv.toLowerCase());
+            row.style.display = (matchSearch && matchFilter) ? '' : '';
+        });
+    };
+
+    if (searchInput) searchInput.addEventListener('input', doFilter);
+    if (filterSelect) filterSelect.addEventListener('change', doFilter);
+    _tableFilters[key] = doFilter;
+}
+
+function reapplyTableFilter(tableBodyId) {
+    const fn = _tableFilters[tableBodyId];
+    if (fn) setTimeout(fn, 50);
+}
+
+function initAllTableSearch() {
+    initTableSearch('search-trips', 'filter-trip-status', 'table-trips-body');
+    initTableSearch('search-vehicles', null, 'table-vehicles-body');
+    initTableSearch('search-drivers', null, 'table-drivers-body');
+    initTableSearch('search-clients', null, 'table-clients-body');
+    initTableSearch('search-fuel', 'filter-fuel-type', 'table-fuel-body');
+    initTableSearch('search-fuel-page', 'filter-fuel-page-type', 'table-fuel-transactions');
+    initTableSearch('search-balance', 'filter-balance-type', 'table-balance-body');
+}
+
 // ─── 6️⃣ الدوال المساعدة ───
 function lookupDriverName(driverId) {
     if (!driverId) return "بدون";
@@ -2032,7 +2339,12 @@ function setupUserLayout() {
     const idTxt = document.getElementById("txt-user-id");
     const avatarTxt = document.getElementById("user-avatar");
 
-    if (roleBadge) roleBadge.innerText = state.user.role || "Guest";
+    if (roleBadge) {
+        roleBadge.innerText = state.user.role || "Guest";
+        roleBadge.style.background = state.user.role === "Admin" ? "rgba(249,115,22,0.15)" : "var(--bg-secondary)";
+        roleBadge.style.color = state.user.role === "Admin" ? "#f97316" : "var(--text-secondary)";
+        roleBadge.style.borderColor = state.user.role === "Admin" ? "rgba(249,115,22,0.3)" : "var(--border-color)";
+    }
     if (nameTxt) nameTxt.innerText = state.user.name || "مستخدم";
     if (idTxt) idTxt.innerText = `ID: ${state.user.id || '---'}`;
     if (avatarTxt) avatarTxt.innerText = state.user.name ? state.user.name.charAt(0).toUpperCase() : "M";
@@ -2048,7 +2360,7 @@ function setupUserLayout() {
         }
     }
 
-    const adminButtons = ["btn-add-vehicle", "btn-add-driver", "btn-add-client", "btn-update-fuel-price"];
+    const adminButtons = ["btn-add-vehicle", "btn-add-driver", "btn-add-client", "btn-update-fuel-price", "btn-bulk-import"];
     adminButtons.forEach(id => {
         const btn = document.getElementById(id);
         if (btn) {

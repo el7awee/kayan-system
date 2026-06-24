@@ -195,6 +195,16 @@ function expenseService_getMonthlyExpenses(ss) {
   let now = new Date();
   let currentMonth = now.getMonth();
   let currentYear = now.getFullYear();
+  
+  // عدد أيام الشهر الفعلي (28/30/31)
+  let daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  let dates = [];
+  let values = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    dates.push(d + "");
+    values.push(0);
+  }
+  
   let total = 0;
   let expenses = [];
   
@@ -204,7 +214,9 @@ function expenseService_getMonthlyExpenses(ss) {
     let createdAt = new Date(data[i][8]);
     if (createdAt.getMonth() === currentMonth && createdAt.getFullYear() === currentYear) {
       let amount = parseFloat(data[i][5]) || 0;
+      let day = createdAt.getDate();
       total += amount;
+      values[day - 1] += amount;
       expenses.push({
         expense_id: data[i][0],
         trip_id: data[i][1],
@@ -219,7 +231,9 @@ function expenseService_getMonthlyExpenses(ss) {
     "success": true, 
     "data": {
       "total": total,
-      "expenses": expenses
+      "expenses": expenses,
+      "dates": dates,
+      "values": values
     }
   };
 }

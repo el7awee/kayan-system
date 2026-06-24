@@ -20,7 +20,7 @@ const ROLE_PERMISSIONS = {
     'createUser', 'getUsers', 'toggleUserStatus', 'updateUserRole', 
     'deleteUser', 'resetUserPassword', 'viewAuditLog', 'logout',
     // العربيات
-    'getVehicles', 'createVehicle', 'updateVehicle', 'deleteVehicle',
+    'getVehicles', 'createVehicle', 'updateVehicle', 'deleteVehicle', 'bulkImportVehicles',
     // السائقين
     'getDriversList', 'createDriver', 'updateDriverData', 'deleteDriver',
     // العملاء
