@@ -504,23 +504,12 @@
         <!-- 📌 القائمة الجانبية (Sidebar)              -->
         <!-- ========================================== -->
         <aside class="sidebar w-full md:w-64 border-l border-border flex flex-col">
-            <div class="header p-4 border-b border-border flex flex-col gap-2">
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-2">
-                        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white shadow-lg shadow-orange-500/20">
-                            <i class="fa-solid fa-truck-fast text-xs"></i>
-                        </div>
-                        <span id="greeting-text" class="font-bold tracking-tight text-sm">مرحباً</span>
+            <div class="header p-4 border-b border-border">
+                <div class="flex items-center gap-2">
+                    <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white shadow-lg shadow-orange-500/20">
+                        <i class="fa-solid fa-truck-fast text-xs"></i>
                     </div>
-                    <div class="flex items-center gap-1">
-                        <button id="btn-theme-toggle" class="w-7 h-7 rounded-lg bg-secondary hover:bg-hover border border-border flex items-center justify-center text-xs transition" title="تبديل الوضع">
-                            <i class="fa-solid fa-moon"></i>
-                        </button>
-                        <button id="btn-notif-bell" class="relative w-7 h-7 rounded-lg bg-secondary hover:bg-hover border border-border flex items-center justify-center text-xs transition" title="التنبيهات">
-                            <i class="fa-solid fa-bell text-amber-500"></i>
-                            <span id="bell-badge" class="absolute -top-1 -end-1 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[8px] font-bold flex items-center justify-center hidden">0</span>
-                        </button>
-                    </div>
+                    <span id="greeting-text" class="font-bold tracking-tight text-sm">منظومة الكيان</span>
                 </div>
             </div>
             
@@ -538,14 +527,7 @@
                 <button id="nav-settings" class="nav-item hidden"><i class="fa-solid fa-users-gear"></i> إدارة المستخدمين</button>
             </nav>
             
-            <div class="p-3 border-t border-border bg-secondary/40 space-y-2.5">
-                <div class="flex items-center gap-2.5">
-                    <div class="w-9 h-9 bg-gradient-to-br from-orange-500/20 to-amber-500/20 rounded-xl border border-border flex items-center justify-center font-bold text-sm text-orange-500" id="user-avatar">U</div>
-                    <div class="truncate min-w-0">
-                        <p id="txt-user-name" class="text-sm font-semibold truncate leading-tight">User Name</p>
-                        <p id="txt-user-id" class="text-[10px] text-muted font-mono truncate">ID: 000</p>
-                    </div>
-                </div>
+            <div class="p-3 border-t border-border space-y-2.5">
                 <button id="btn-logout" class="w-full py-1.5 bg-secondary hover:bg-rose-950/40 text-rose-400 border border-border hover:border-rose-900/50 rounded-lg text-xs font-medium transition">
                     <i class="fa-solid fa-arrow-right-from-bracket ml-1"></i> خروج
                 </button>
@@ -556,6 +538,18 @@
         <!-- 📄 المحتوى الرئيسي                         -->
         <!-- ========================================== -->
         <main class="flex-1 p-6 md:p-8 overflow-y-auto" style="background-color: var(--bg-primary);">
+
+            <!-- شريط الأدوات العلوي (جرس + وضع) -->
+            <div class="flex items-center justify-end gap-2 mb-4">
+                <button id="btn-refresh-dashboard" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg border border-border transition flex items-center gap-1.5"><i class="fa-solid fa-rotate text-xs"></i> تحديث</button>
+                <button id="btn-notif-bell" class="relative w-7 h-7 rounded-lg bg-secondary hover:bg-hover border border-border flex items-center justify-center text-xs transition" title="التنبيهات">
+                    <i class="fa-solid fa-bell text-amber-500"></i>
+                    <span id="bell-badge" class="absolute -top-1 -end-1 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[8px] font-bold flex items-center justify-center hidden">0</span>
+                </button>
+                <button id="btn-theme-toggle" class="w-7 h-7 rounded-lg bg-secondary hover:bg-hover border border-border flex items-center justify-center text-xs transition" title="تبديل الوضع">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+            </div>
             
             <!-- ======================================== -->
             <!-- 📊 شاشة لوحة التحكم (Dashboard)          -->
@@ -567,7 +561,6 @@
                         <h2 class="text-xl font-bold">التقرير اللحظي للأسطول</h2>
                         <p class="text-xs text-muted mt-0.5">آخر تحديث: <span id="dash-last-update">—</span></p>
                     </div>
-                    <button id="btn-refresh-dashboard" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg border border-border transition flex items-center gap-1.5"><i class="fa-solid fa-rotate text-xs"></i> تحديث</button>
                 </div>
                 
                 <!-- KPI Cards -->

@@ -2479,25 +2479,15 @@ function setButtonLoading(buttonElement, isLoading, textContent) {
 }
 
 function setupUserLayout() {
-    const nameTxt = document.getElementById("txt-user-name");
-    const idTxt = document.getElementById("txt-user-id");
-    const avatarTxt = document.getElementById("user-avatar");
     const greetingTxt = document.getElementById("greeting-text");
 
-    if (nameTxt) nameTxt.innerText = state.user.name || "مستخدم";
-    if (idTxt) idTxt.innerText = `ID: ${state.user.id || '---'}`;
-    if (avatarTxt) avatarTxt.innerText = state.user.name ? state.user.name.charAt(0).toUpperCase() : "M";
-
-    // تحية حسب الوقت
     if (greetingTxt) {
         const h = new Date().getHours();
         const name = state.user.name || 'مستخدم';
         let greet = 'مرحباً';
         if (h >= 5 && h < 12) greet = 'صباح الخير';
-        else if (h >= 12 && h < 17) greet = 'مساء الخير';
-        else if (h >= 17 && h < 21) greet = 'مساء الخير';
         else greet = 'مساء الخير';
-        greetingTxt.innerText = `${greet}، ${name}`;
+        greetingTxt.innerText = `${greet} ${name}`;
     }
 
     const navSettings = document.getElementById("nav-settings");
