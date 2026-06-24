@@ -212,8 +212,8 @@ function bindUIEvents() {
 
 // ─── 3️⃣ إدارة التنقل ───
 function switchView(viewId) {
-    const sections = ["view-login", "view-dashboard", "view-trips", "view-expenses", 
-                      "view-fuel", "view-vehicles", "view-drivers", "view-clients",
+    const sections = ["view-login", "view-dashboard", "view-trips", "view-expenses",
+                      "view-fuel", "view-maintenance", "view-vehicles", "view-drivers", "view-clients",
                       "view-balance", "view-notifications", "view-settings"];
     sections.forEach(id => {
         const sec = document.getElementById(id);
