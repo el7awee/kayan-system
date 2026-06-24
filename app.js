@@ -131,7 +131,32 @@ function initApp() {
     switchView("view-login");
 }
 
+// ─── تحديث تلقائي كل 30 ثانية ───
+let autoRefreshTimer = null;
+function startAutoRefresh() {
+    stopAutoRefresh();
+    autoRefreshTimer = setInterval(() => {
+        const curView = document.querySelector(".view-section:not(.hidden)");
+        if (curView && curView.id === "view-dashboard") {
+            refreshDashboard();
+        }
+    }, 30000);
+}
+function stopAutoRefresh() {
+    if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+}
+
 function bindUIEvents() {
+    // هامبورجر للموبايل - toggle sidebar
+    document.getElementById("btn-sidebar-toggle")?.addEventListener("click", () => {
+        document.querySelector(".sidebar")?.classList.toggle("sidebar-open");
+    });
+    // إغلاق sidebar تلقائياً عند اختيار قائمة (موبايل)
+    document.querySelectorAll(".sidebar .nav-item").forEach(el => {
+        el.addEventListener("click", () => {
+            document.querySelector(".sidebar")?.classList.remove("sidebar-open");
+        });
+    });
     // التنقل
     document.getElementById("nav-dashboard")?.addEventListener("click", () => { switchView("view-dashboard"); refreshDashboard(); });
     document.getElementById("nav-trips")?.addEventListener("click", async () => {
@@ -168,7 +193,7 @@ function bindUIEvents() {
     // أزرار التحديث
     document.getElementById("btn-refresh-dashboard")?.addEventListener("click", refreshDashboard);
     document.getElementById("btn-refresh-trips")?.addEventListener("click", () => loadTripsData(true));
-    document.getElementById("btn-refresh-fuel")?.addEventListener("click", loadFuelTransactions);
+    document.getElementById("btn-refresh-fuel-data")?.addEventListener("click", loadFuelData);
     document.getElementById("btn-refresh-maintenance")?.addEventListener("click", () => loadMaintenanceData(true));
     document.getElementById("btn-refresh-vehicles")?.addEventListener("click", () => loadVehiclesData(true));
     document.getElementById("btn-refresh-drivers")?.addEventListener("click", () => loadDriversData(true));
@@ -224,10 +249,12 @@ function switchView(viewId) {
     if (viewId === "view-login") {
         if (mainLayout) mainLayout.classList.add("hidden");
         document.getElementById("view-login")?.classList.remove("hidden");
+        stopAutoRefresh();
     } else {
         if (mainLayout) mainLayout.classList.remove("hidden");
         document.getElementById(viewId)?.classList.remove("hidden");
         updateSidebarActiveState(viewId);
+        if (viewId === "view-dashboard") { startAutoRefresh(); } else { stopAutoRefresh(); }
     }
 }
 
@@ -471,8 +498,41 @@ async function refreshDashboard() {
         // Render charts
         renderCharts(window._lastExpensesData, window._lastFuelData);
 
+        // Load fuel analytics
+        loadFuelAnalytics();
+
     } catch (err) {
         console.error("فشل تحديث لوحة التحكم:", err);
+    }
+}
+
+// ─── تحليل استهلاك البنزين ───
+async function loadFuelAnalytics() {
+    try {
+        const res = await callBackend("getFuelAnalytics");
+        const data = res?.data;
+        if (!data) return;
+        
+        document.getElementById("fuel-analytics-total").innerText = data.total_liters || 0;
+        
+        const tbody = document.querySelector("#fuel-analytics-table tbody");
+        if (!tbody) return;
+        
+        if (!data.vehicles || data.vehicles.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted">لا توجد بيانات</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = data.vehicles.map(v => `
+            <tr class="border-b border-border hover:bg-secondary/30 transition">
+                <td class="py-2 px-2 font-medium">${v.vehicle_id}</td>
+                <td class="py-2 px-2 font-mono">${v.total_liters}</td>
+                <td class="py-2 px-2 font-mono">${v.total_cost.toLocaleString()}</td>
+                <td class="py-2 px-2">${v.trip_count}</td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        console.error("فشل تحليل استهلاك البنزين:", e);
     }
 }
 
@@ -1241,14 +1301,11 @@ function renderCharts(expensesData, fuelData) {
     }
 }
 
-// تحديث الرسوم البيانية عند تغيير الثيم
-const origToggleTheme = toggleTheme;
-toggleTheme = function() {
-    origToggleTheme();
+document.addEventListener("themeChanged", function() {
     const expData = window._lastExpensesData;
     const fuelData = window._lastFuelData;
     if (expData || fuelData) renderCharts(expData, fuelData);
-};
+});
 
 async function handleAddFuelBalance() {
     const { value: amount } = await Swal.fire({
@@ -2482,6 +2539,7 @@ function toggleTheme() {
     document.documentElement.setAttribute("data-theme", newTheme);
     localStorage.setItem("kyan_theme", newTheme);
     updateThemeIcon(newTheme);
+    document.dispatchEvent(new Event("themeChanged"));
 }
 
 function updateThemeIcon(theme) {

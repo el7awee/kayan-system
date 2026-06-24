@@ -366,3 +366,54 @@ function logFuelTransaction(data) {
   
   return transactionId;
 }
+
+/**
+ * ─── تحليل استهلاك البنزين حسب العربية ───
+ */
+function fuelService_getAnalytics(ss) {
+  startTimer("fuelService_getAnalytics");
+  
+  let sheet = getCachedSheet("Fuel_Transactions");
+  if (!sheet) return { "success": false, "message": "شيت Fuel_Transactions غير موجود." };
+  
+  let data = getCachedData("Fuel_Transactions");
+  let consumption = {};
+  let totalLiters = 0, totalCost = 0;
+  
+  for (let i = 1; i < data.length; i++) {
+    let row = data[i];
+    let vehId = row[1] || "غير معروف";
+    let liters = parseFloat(row[4]) || 0;
+    let cost = parseFloat(row[5]) || 0;
+    let type = row[3] || "";
+    
+    // نتخطى عمليات الإضافة (ADD) لأنها مش استهلاك
+    if (type === "ADD") continue;
+    
+    if (!consumption[vehId]) consumption[vehId] = { liters: 0, cost: 0, trips: new Set() };
+    consumption[vehId].liters += liters;
+    consumption[vehId].cost += cost;
+    if (row[2]) consumption[vehId].trips.add(row[2]);
+    totalLiters += liters;
+    totalCost += cost;
+  }
+  
+  // تحويل النتيجة لـ array وترتيبها
+  let result = Object.entries(consumption).map(([vehicle_id, data]) => ({
+    vehicle_id,
+    total_liters: Math.round(data.liters * 100) / 100,
+    total_cost: Math.round(data.cost * 100) / 100,
+    trip_count: data.trips.size
+  })).sort((a, b) => b.total_liters - a.total_liters);
+  
+  endTimer("fuelService_getAnalytics");
+  
+  return {
+    "success": true,
+    "data": {
+      vehicles: result,
+      total_liters: Math.round(totalLiters * 100) / 100,
+      total_cost: Math.round(totalCost * 100) / 100
+    }
+  };
+}

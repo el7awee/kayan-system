@@ -26,7 +26,7 @@ const ROLE_PERMISSIONS = {
     // العملاء
     'getClients', 'createClient', 'updateClient', 'deleteClient',
     // البنزينة
-    'getFuelBalance', 'addFuelBalance', 'getFuelTransactions', 'updateFuelPrice',
+    'getFuelBalance', 'addFuelBalance', 'getFuelTransactions', 'getFuelAnalytics', 'updateFuelPrice',
     // المصروفات
     'getMonthlyExpenses',
     // التنبيهات
@@ -55,7 +55,7 @@ const ROLE_PERMISSIONS = {
     // العملاء
     'getClients', 'createClient', 'updateClient', 'deleteClient',
     // البنزينة
-    'getFuelBalance', 'addFuelBalance', 'getFuelTransactions', 'updateFuelPrice',
+    'getFuelBalance', 'addFuelBalance', 'getFuelTransactions', 'getFuelAnalytics', 'updateFuelPrice',
     // المصروفات
     'getMonthlyExpenses',
     // التنبيهات
@@ -76,7 +76,7 @@ const ROLE_PERMISSIONS = {
     'getTrips', 'getDrivers', 'createTrip', 
     'updateDriver', 'updateVehicle', 'logout', 'getTripExpenses', 'getDashboard', 'getLookups',
     // البنزينة (قراءة فقط)
-    'getFuelBalance', 'getFuelTransactions',
+    'getFuelBalance', 'getFuelTransactions', 'getFuelAnalytics',
     // التنبيهات (قراءة فقط)
     'getNotifications',
     // العربيات (قراءة فقط)
@@ -97,7 +97,7 @@ const ROLE_PERMISSIONS = {
     // القديمة
     'getTrips', 'getDrivers', 'addExpense', 'settleTripFinancials', 'logout', 'getTripExpenses', 'getDashboard', 'getLookups',
     // البنزينة (إضافة رصيد + قراءة)
-    'getFuelBalance', 'addFuelBalance', 'getFuelTransactions',
+    'getFuelBalance', 'addFuelBalance', 'getFuelTransactions', 'getFuelAnalytics',
     // التنبيهات
     'getNotifications', 'markNotificationRead',
     // العهدات (القديمة - للسائقين)
@@ -248,10 +248,10 @@ function validateBusinessConstraints(e, action) {
   
   // [BC_04]: لا يمكن تعديل بيانات سائق أو سيارة في رحلة نشطة
   if (action === "updateDriver" || action === "updateVehicle") {
-    let resourceId = (action === "updateDriver") ? e.parameter.Driver_Code : e.parameter.Vehicle_Number;
+    let resourceId = (action === "updateDriver") ? e.parameter.Driver_ID : e.parameter.Vehicle_ID;
     let targetColumnIndex = (action === "updateDriver") ? 3 : 4;
     
-    if (isResourceBusyInActiveTrip(ss, resourceId, targetColumnIndex)) {
+    if (resourceId && isResourceBusyInActiveTrip(ss, resourceId, targetColumnIndex)) {
       throwBusinessError("RESOURCES_BUSY", "لا يمكن تعديل بيانات المورد لارتباطه برحلة نشطة.");
     }
   }

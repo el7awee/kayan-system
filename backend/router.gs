@@ -161,6 +161,9 @@ function routeRequest(e, method, userId, userRole) {
       case 'getFuelTransactions':
         resultPayload = fuelService_getTransactions(ss, e.parameter);
         break;
+      case 'getFuelAnalytics':
+        resultPayload = fuelService_getAnalytics(ss);
+        break;
       case 'updateFuelPrice':
         resultPayload = fuelService_updatePrice(ss, e.parameter, realUserId);
         break;

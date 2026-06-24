@@ -166,32 +166,33 @@
         }
 
         /* ====================================================== */
-        /* 🆕 إصلاح تخطيط الصفحة (المحتوى جنب القائمة الجانبية)  */
+        /* التخطيط الرئيسي (المحتوى + القائمة الجانبية)           */
         /* ====================================================== */
         #main-layout {
-            display: none !important;
-            flex-direction: row !important;
-            min-height: 100vh !important;
+            display: none;
+            flex-direction: row;
+            min-height: 100vh;
         }
 
         #main-layout:not(.hidden) {
-            display: flex !important;
+            display: flex;
         }
 
         .sidebar {
-            flex-shrink: 0 !important;
-            width: 16rem !important;
-            height: 100vh !important;
-            position: sticky !important;
-            top: 0 !important;
-            overflow-y: auto !important;
+            flex-shrink: 0;
+            width: 16rem;
+            height: 100vh;
+            position: sticky;
+            top: 0;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
         }
 
         main {
-            flex: 1 !important;
-            min-height: 100vh !important;
-            overflow-y: auto !important;
-            padding: 1.5rem !important;
+            flex: 1;
+            min-height: 100vh;
+            overflow-y: auto;
+            padding: 1.5rem;
         }
 
         /* ===== KPI Cards (مثل Revalo + Global Payments) ===== */
@@ -288,9 +289,11 @@
             background: var(--bg-input);
             border: 1px solid var(--input-border);
             border-radius: 10px;
-            padding: 6px 12px 6px 32px;
+            padding: 8px 12px 8px 32px;
             font-size: 0.8rem;
-            width: 220px;
+            width: 100%;
+            max-width: 220px;
+            min-width: 120px;
             transition: all 0.3s ease;
             color: var(--text-primary);
         }
@@ -376,7 +379,7 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            padding: 10px 16px;
+            padding: 12px 16px;
             border-radius: 12px;
             transition: all 0.2s ease;
             font-size: 0.85rem;
@@ -386,10 +389,15 @@
             border: none;
             background: none;
             cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
         }
         .sidebar .nav-item:hover {
             background: var(--bg-hover);
             color: var(--text-primary);
+        }
+        .sidebar .nav-item:active {
+            background: var(--bg-hover);
+            transform: scale(0.97);
         }
         .sidebar .nav-item.active {
             background: rgba(249,115,22,0.08);
@@ -431,22 +439,109 @@
                 width: 100% !important;
                 height: auto !important;
                 position: relative !important;
+                max-height: none !important;
+            }
+            .sidebar nav, .sidebar .p-3:last-child {
+                display: none;
+            }
+            .sidebar.sidebar-open nav, .sidebar.sidebar-open .p-3:last-child {
+                display: flex;
+            }
+            .sidebar.sidebar-open nav {
+                flex-wrap: wrap;
+                gap: 4px;
+                padding: 6px;
+            }
+            .sidebar .nav-item {
+                font-size: 0.75rem;
+                padding: 8px 10px;
+                flex: 1 0 auto;
+                min-width: 0;
+                white-space: nowrap;
+            }
+            .sidebar .nav-item i {
+                width: 16px;
+                font-size: 0.85rem;
             }
             main {
                 min-height: auto !important;
-                padding: 1rem !important;
+                padding: 0.75rem !important;
+            }
+            .kpi-card {
+                padding: 0.85rem !important;
             }
             .kpi-card .kpi-value {
-                font-size: 1.35rem;
+                font-size: 1.15rem !important;
+            }
+            .kpi-card .kpi-icon {
+                width: 34px;
+                height: 34px;
+                font-size: 0.9rem;
             }
             .table-toolbar {
                 flex-wrap: wrap;
+                gap: 6px;
+                padding: 0.5rem 0.75rem;
             }
             .table-toolbar .search-input {
-                width: 100%;
+                max-width: 100%;
+                font-size: 0.75rem;
+                padding: 6px 10px 6px 28px;
+            }
+            .table-toolbar .filter-select {
+                font-size: 0.75rem;
+                padding: 6px 8px;
             }
             .chart-wrapper {
                 padding: 0.75rem;
+                min-height: 180px;
+            }
+            .chart-wrapper canvas {
+                max-height: 140px;
+            }
+            .grid.grid-cols-2 {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            table {
+                font-size: 0.7rem !important;
+            }
+            table th, table td {
+                padding: 0.5rem 0.4rem !important;
+                white-space: nowrap;
+            }
+            .sidebar .nav-item .nav-badge {
+                font-size: 0.5rem;
+                padding: 1px 4px;
+            }
+            .header {
+                padding: 0.5rem 0.75rem !important;
+            }
+            #main-layout .flex.items-center.gap-2.mb-4 button {
+                min-width: 36px;
+                min-height: 36px;
+                font-size: 0.7rem;
+            }
+            .table-toolbar .search-wrap {
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 400px) {
+            .kpi-card .kpi-value {
+                font-size: 1rem !important;
+            }
+            .kpi-card .kpi-label {
+                font-size: 0.65rem;
+            }
+            .grid.grid-cols-2 {
+                grid-template-columns: repeat(1, minmax(0, 1fr));
+            }
+            .sidebar .nav-item {
+                font-size: 0.65rem;
+                padding: 6px 8px;
+            }
+            main {
+                padding: 0.5rem !important;
             }
         }
 
@@ -539,8 +634,12 @@
         <!-- ========================================== -->
         <main class="flex-1 p-6 md:p-8 overflow-y-auto" style="background-color: var(--bg-primary);">
 
-            <!-- شريط الأدوات العلوي (جرس + وضع) -->
-            <div class="flex items-center justify-end gap-2 mb-4">
+            <!-- شريط الأدوات العلوي (هامبورجر + جرس + وضع) -->
+            <div class="flex items-center justify-between gap-2 mb-4">
+                <button id="btn-sidebar-toggle" class="md:hidden w-7 h-7 rounded-lg bg-secondary hover:bg-hover border border-border flex items-center justify-center text-xs transition" title="القائمة">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <div class="flex items-center gap-2 me-auto md:me-0"></div>
                 <button id="btn-refresh-dashboard" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg border border-border transition flex items-center gap-1.5"><i class="fa-solid fa-rotate text-xs"></i> تحديث</button>
                 <button id="btn-notif-bell" class="relative w-7 h-7 rounded-lg bg-secondary hover:bg-hover border border-border flex items-center justify-center text-xs transition" title="التنبيهات">
                     <i class="fa-solid fa-bell text-amber-500"></i>
@@ -636,6 +735,29 @@
                             <span class="text-[10px] text-muted">حسب العربية</span>
                         </div>
                         <canvas id="chart-fuel" height="200"></canvas>
+                    </div>
+                </div>
+
+                <!-- Fuel Analytics Table -->
+                <div class="chart-wrapper">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-bold"><i class="fa-solid fa-chart-simple text-amber-500 ml-2"></i>تحليل استهلاك البنزين</h3>
+                        <span class="text-[10px] text-muted">إجمالي: <span id="fuel-analytics-total">0</span> لتر</span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs" id="fuel-analytics-table">
+                            <thead>
+                                <tr class="text-muted border-b border-border">
+                                    <th class="text-right py-2 px-2">العربية</th>
+                                    <th class="text-right py-2 px-2">لترات</th>
+                                    <th class="text-right py-2 px-2">التكلفة (ج.م)</th>
+                                    <th class="text-right py-2 px-2">عدد الرحلات</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="4" class="text-center py-4 text-muted">جاري التحميل...</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </section>

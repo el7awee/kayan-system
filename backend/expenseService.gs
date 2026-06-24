@@ -97,7 +97,7 @@ function expenseService_addExpense(e, userId) {
     nowStr,                                       // I: Created_At
     1,                                            // J: Version_Number
     false,                                        // K: IsDeleted
-    isRoadFuel ? "ROAD_FUEL" : isMaintenance ? "MAINTENANCE" : "REGULAR"          // L: Expense_Type
+    isRoadFuel ? "ROAD_FUEL" : "REGULAR"          // L: Expense_Type
   ];
   
   sheet.appendRow(newExpenseRow);
