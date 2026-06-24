@@ -438,7 +438,7 @@ async function refreshDashboard() {
             const vehicles = vehRes?.data || [];
             const totalVeh = vehicles.length;
             const busyVeh = busyVehicleIds.size;
-            document.getElementById("stat-vehicles").innerText = `${totalVeh - busyVeh} / ${busyVeh}`;
+            document.getElementById("stat-vehicles").innerHTML = `<span class="text-emerald-400">${totalVeh - busyVeh}</span> / <span class="text-rose-400">${busyVeh}</span>`;
             state.cache.vehicles = vehicles;
         } catch (e) { /* ignore */ }
 
@@ -447,7 +447,7 @@ async function refreshDashboard() {
             const drivers = drvRes?.data || [];
             const totalDrv = drivers.length;
             const busyDrv = busyDriverIds.size;
-            document.getElementById("stat-drivers").innerText = `${totalDrv - busyDrv} / ${busyDrv}`;
+            document.getElementById("stat-drivers").innerHTML = `<span class="text-emerald-400">${totalDrv - busyDrv}</span> / <span class="text-rose-400">${busyDrv}</span>`;
             state.cache.drivers = drivers;
         } catch (e) { /* ignore */ }
 
