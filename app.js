@@ -189,7 +189,6 @@ function bindUIEvents() {
 
     // إدارة
     document.getElementById("btn-add-vehicle")?.addEventListener("click", handleAddVehicle);
-    document.getElementById("btn-bulk-import")?.addEventListener("click", handleBulkImport);
     document.getElementById("btn-add-driver")?.addEventListener("click", handleAddDriver);
     document.getElementById("btn-add-client")?.addEventListener("click", handleAddClient);
 
@@ -1354,56 +1353,6 @@ function renderVehiclesTable(vehicles) {
     reapplyTableFilter('table-vehicles-body');
 }
 
-async function handleBulkImport() {
-    const confirm = await Swal.fire({
-        title: 'استيراد العربيات',
-        text: 'هل تريد استيراد 22 عربية (جامبو + تريلا) إلى النظام؟',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'نعم، استيراد',
-        cancelButtonText: 'إلغاء'
-    });
-    if (!confirm.isConfirmed) return;
-
-    Swal.fire({ title: 'جاري الاستيراد...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-
-    try {
-        const res = await callBackend('bulkImportVehicles', {
-            Vehicles: `جامبو|2006|ر ي ل 7619
-جامبو|2009|ر ق ل 5713
-جامبو|2010|ر ل ع 2768
-جامبو|2010|ر ج أ 6346
-جامبو|2011|ر ط ب 5723
-جامبو|2013|ر ي ل 8463
-جامبو|2013|ر هـ ص 6419
-جامبو|2014|ر ي ل 5178
-جامبو|2015|ر هـ ب 8795
-جامبو|2021|ر ق ل 1926
-جامبو|2021|ر ق ل 1765
-تريلا|2008|ر ج أ 7678
-تريلا|2010|ر ج أ 8115
-تريلا|2010|ر ي ل 7364
-تريلا|2011|ر ل ع 2164
-تريلا|2013|ر ع م 9724
-تريلا|2013|ر ص ق 5483
-تريلا|2015|ر ب ق 9829
-تريلا|2015|ر أ ق 8798
-تريلا|2018|ر ج أ 8565
-تريلا|2018|ر ج أ 8548
-تريلا|2019|ر و ل 3759`
-        });
-
-        if (res?.success) {
-            Swal.fire({ icon: 'success', title: 'تم', text: `تم إضافة ${res.data?.added || 22} عربية بنجاح` });
-            loadVehiclesData(true);
-        } else {
-            Swal.fire({ icon: 'error', title: 'خطأ', text: res?.message || 'فشل الاستيراد' });
-        }
-    } catch (err) {
-        Swal.fire({ icon: 'error', title: 'خطأ', text: err.message });
-    }
-}
-
 async function handleAddVehicle() {
     const { value: formValues } = await Swal.fire({
         title: 'إضافة عربية جديدة',
@@ -2490,7 +2439,7 @@ function setupUserLayout() {
         }
     }
 
-    const adminButtons = ["btn-add-vehicle", "btn-add-driver", "btn-add-client", "btn-update-fuel-price", "btn-bulk-import"];
+    const adminButtons = ["btn-add-vehicle", "btn-add-driver", "btn-add-client", "btn-update-fuel-price"];
     adminButtons.forEach(id => {
         const btn = document.getElementById(id);
         if (btn) {
