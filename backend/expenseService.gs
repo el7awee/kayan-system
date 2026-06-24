@@ -71,24 +71,6 @@ function expenseService_addExpense(e, userId) {
   // اللي بيتخصم من بنزينة الشركة هو بس لترات بداية الرحلة (في tripService_createTrip).
   // هنا بنضيف لترات جاز الطريق على إجمالي لترات الرحلة (فوق) ونخصم قيمته من عهدة السائق (تحت).
   
-  // ==========================================
-  // 🆕 إذا كان المصروف من نوع "صيانة"
-  // ==========================================
-  let isMaintenance = (category === "صيانة");
-
-  if (isMaintenance && vehicleId) {
-    maintenanceService_addMaintenance({
-      Trip_ID: tripId,
-      Vehicle_ID: vehicleId,
-      Driver_ID: driverId,
-      Maintenance_Type: e.parameter.Maintenance_Type || "أخرى",
-      Amount: amount,
-      Workshop: e.parameter.Workshop || "",
-      Odometer: e.parameter.Odometer || "",
-      Notes: e.parameter.Maintenance_Notes || ""
-    }, userId);
-  }
-
   // معالجة المرفق
   let receiptFileId = "";
   let base64Str = e.parameter.Receipt_File_Base64;

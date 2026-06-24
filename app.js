@@ -902,13 +902,6 @@ async function handleCreateTripSubmit(e) {
 }
 
 // ─── 5️⃣-و: المصروفات ───
-document.getElementById("expense-category")?.addEventListener("change", function() {
-  const mntFields = document.getElementById("maintenance-fields");
-  if (mntFields) {
-    mntFields.classList.toggle("hidden", this.value !== "صيانة");
-  }
-});
-
 async function handleAddExpenseSubmit(e) {
     e.preventDefault();
     const submitBtn = document.getElementById("btn-expense-submit");
@@ -925,10 +918,6 @@ async function handleAddExpenseSubmit(e) {
         Expense_Category: document.getElementById("expense-category")?.value || "",
         Amount: document.getElementById("expense-amount")?.value || 0,
         Fuel_Liters: document.getElementById("expense-fuel-liters")?.value || 0,
-        Maintenance_Type: document.getElementById("maintenance-type")?.value || "",
-        Workshop: document.getElementById("maintenance-workshop")?.value || "",
-        Odometer: document.getElementById("maintenance-odometer")?.value || "",
-        Maintenance_Notes: document.getElementById("maintenance-notes")?.value || "",
         bodyPayload: {
             Receipt_File_Base64: base64Payload,
             File_Name: fileNamePayload
