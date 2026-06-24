@@ -121,6 +121,13 @@ function routeRequest(e, method, userId, userRole) {
       case 'bulkImportVehicles':
         resultPayload = vehicleService_bulkImport(ss, e.parameter, realUserId);
         break;
+      case 'debugSheets':
+        resultPayload = (function() {
+          let sheets = ss.getSheets();
+          let names = sheets.map(s => s.getName());
+          return { "success": true, "data": { "sheets": names } };
+        })();
+        break;
       
       case 'getDriversList':
         resultPayload = driverService_getDrivers(ss);

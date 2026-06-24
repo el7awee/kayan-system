@@ -18,7 +18,7 @@ const ROLE_PERMISSIONS = {
     'addExpense', 'settleTripFinancials', 'updateDriver', 'updateVehicle',
     'getTripExpenses', 'getDashboard', 'getLookups',
     'createUser', 'getUsers', 'toggleUserStatus', 'updateUserRole', 
-    'deleteUser', 'resetUserPassword', 'viewAuditLog', 'logout',
+    'deleteUser', 'resetUserPassword', 'viewAuditLog', 'logout', 'debugSheets',
     // العربيات
     'getVehicles', 'createVehicle', 'updateVehicle', 'deleteVehicle', 'bulkImportVehicles',
     // السائقين
