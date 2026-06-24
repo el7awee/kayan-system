@@ -973,16 +973,32 @@ async function handleCreateTripSubmit(e) {
     e.preventDefault();
     const submitBtn = document.getElementById("btn-trip-submit");
 
+    // ✅ validation
+    const customer = document.getElementById("trip-customer-id")?.value;
+    const driver = document.getElementById("trip-driver-id")?.value;
+    const vehicle = document.getElementById("trip-vehicle-id")?.value;
+    const route = document.getElementById("trip-route")?.value.trim();
+    if (!customer || !driver || !vehicle || !route) {
+        Swal.fire({ icon: 'warning', title: 'بيانات ناقصة', text: 'الرجاء اختيار العميل والسائق والعربية وكتابة خط السير.' });
+        return;
+    }
+    const liters = parseFloat(document.getElementById("trip-fuel-liters")?.value) || 0;
+    const price = parseFloat(document.getElementById("trip-fuel-price")?.value) || 0;
+    if (liters <= 0 || price <= 0) {
+        Swal.fire({ icon: 'warning', title: 'بيانات غير صحيحة', text: 'لترات الجاز وسعر اللتر يجب أن يكونا أكبر من صفر.' });
+        return;
+    }
+
     setButtonLoading(submitBtn, true, "جاري البث...");
 
     const params = {
-        Customer_ID: document.getElementById("trip-customer-id")?.value || "",
-        Driver_ID: document.getElementById("trip-driver-id")?.value || "",
-        Vehicle_ID: document.getElementById("trip-vehicle-id")?.value || "",
-        Route: document.getElementById("trip-route")?.value.trim() || "",
-        Advance_Cash: document.getElementById("trip-advance-cash")?.value || 0,
-        Fuel_Liters: document.getElementById("trip-fuel-liters")?.value || 0,
-        Fuel_Price: document.getElementById("trip-fuel-price")?.value || 0
+        Customer_ID: customer,
+        Driver_ID: driver,
+        Vehicle_ID: vehicle,
+        Route: route,
+        Advance_Cash: parseFloat(document.getElementById("trip-advance-cash")?.value) || 0,
+        Fuel_Liters: liters,
+        Fuel_Price: price
     };
 
     try {
@@ -1003,18 +1019,29 @@ async function handleAddExpenseSubmit(e) {
     e.preventDefault();
     const submitBtn = document.getElementById("btn-expense-submit");
 
+    // ✅ validation
+    const tripId = document.getElementById("expense-trip-id")?.value.trim();
+    const driverId = document.getElementById("expense-driver-id")?.value;
+    const vehicleId = document.getElementById("expense-vehicle-id")?.value;
+    const category = document.getElementById("expense-category")?.value;
+    const amount = parseFloat(document.getElementById("expense-amount")?.value) || 0;
+    if (!tripId || !driverId || !vehicleId || !category || amount <= 0) {
+        Swal.fire({ icon: 'warning', title: 'بيانات ناقصة', text: 'الرجاء إدخال جميع الحقول المطلوبة.' });
+        return;
+    }
+
     setButtonLoading(submitBtn, true, "جاري الحفظ...");
 
     const base64Payload = document.getElementById("expense-file-base64")?.value || "";
     const fileNamePayload = document.getElementById("expense-file-name")?.value || "";
 
     const params = {
-        Trip_ID: document.getElementById("expense-trip-id")?.value.trim() || "",
-        Driver_ID: document.getElementById("expense-driver-id")?.value || "",
-        Vehicle_ID: document.getElementById("expense-vehicle-id")?.value || "",
-        Expense_Category: document.getElementById("expense-category")?.value || "",
-        Amount: document.getElementById("expense-amount")?.value || 0,
-        Fuel_Liters: document.getElementById("expense-fuel-liters")?.value || 0,
+        Trip_ID: tripId,
+        Driver_ID: driverId,
+        Vehicle_ID: vehicleId,
+        Expense_Category: category,
+        Amount: amount,
+        Fuel_Liters: parseFloat(document.getElementById("expense-fuel-liters")?.value) || 0,
         bodyPayload: {
             Receipt_File_Base64: base64Payload,
             File_Name: fileNamePayload
