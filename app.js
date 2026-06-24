@@ -2534,6 +2534,18 @@ function setupUserLayout() {
         }
     }
 
+    // إخفاء العهدات عن الأوبريشن (مش متاحة ليه)
+    const navBalance = document.getElementById("nav-balance");
+    if (navBalance) {
+        if (state.user.role === "Operations") {
+            navBalance.classList.add("hidden");
+            navBalance.style.display = "none";
+        } else {
+            navBalance.classList.remove("hidden");
+            navBalance.style.display = "flex";
+        }
+    }
+
     const adminButtons = ["btn-add-vehicle", "btn-add-driver", "btn-add-client", "btn-update-fuel-price"];
     adminButtons.forEach(id => {
         const btn = document.getElementById(id);
