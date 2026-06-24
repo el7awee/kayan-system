@@ -145,6 +145,7 @@ function bindUIEvents() {
     document.getElementById("nav-clients")?.addEventListener("click", () => { switchView("view-clients"); loadClientsData(); });
     document.getElementById("nav-balance")?.addEventListener("click", () => { switchView("view-balance"); loadBalanceData(); });
     document.getElementById("nav-notifications")?.addEventListener("click", () => { switchView("view-notifications"); loadNotificationsData(); });
+    document.getElementById("btn-notif-bell")?.addEventListener("click", () => { switchView("view-notifications"); loadNotificationsData(); });
     document.getElementById("nav-settings")?.addEventListener("click", () => {
         if (state.user.role === "Admin" || state.user.role === "Manager") {
             switchView("view-settings");
@@ -191,9 +192,7 @@ function bindUIEvents() {
 
     // التنبيهات
     document.getElementById("btn-mark-all-read")?.addEventListener("click", handleMarkAllRead);
-    document.getElementById("notification-bar-close")?.addEventListener("click", () => {
-        document.getElementById("notification-bar")?.classList.add("hidden");
-    });
+
 
     // تسجيل الخروج والوضع
     document.getElementById("btn-logout")?.addEventListener("click", handleLogout);
@@ -417,22 +416,19 @@ async function refreshDashboard() {
 
         if (notifRes?.data) {
             const unreadCount = notifRes.data.unread_count || 0;
-            animateCounter(document.getElementById("stat-notifications"), unreadCount);
-            state.cache.notifications = notifRes.data.notifications || [];
-            
             const notifications = notifRes.data.notifications || [];
-            const unread = notifications.filter(n => !n.is_read);
-            const bar = document.getElementById("notification-bar");
-            if (unread.length > 0) {
-                bar.classList.remove("hidden");
-                document.getElementById("notification-bar-message").innerText = unread[0].title + ": " + unread[0].message;
-                // Update notification badge in sidebar
-                const badge = document.getElementById("notif-badge");
-                if (badge) { badge.innerText = unread.length; badge.classList.remove("hidden"); }
+            animateCounter(document.getElementById("stat-notifications"), unreadCount);
+            state.cache.notifications = notifications;
+            
+            // تحديث جرس التنبيهات في الهيدر
+            const bellBadge = document.getElementById("bell-badge");
+            const notifBadge = document.getElementById("notif-badge");
+            if (unreadCount > 0) {
+                if (bellBadge) { bellBadge.innerText = unreadCount; bellBadge.classList.remove("hidden"); }
+                if (notifBadge) { notifBadge.innerText = unreadCount; notifBadge.classList.remove("hidden"); }
             } else {
-                bar.classList.add("hidden");
-                const badge = document.getElementById("notif-badge");
-                if (badge) badge.classList.add("hidden");
+                if (bellBadge) bellBadge.classList.add("hidden");
+                if (notifBadge) notifBadge.classList.add("hidden");
             }
         }
 
@@ -1041,35 +1037,69 @@ function renderCharts(expensesData, fuelData) {
     const orange = '#f97316';
     const green = '#10b981';
 
-    // Expense chart (line)
+    // Expense chart (bar — حسب التصنيف)
     const expCtx = document.getElementById('chart-expenses');
     if (expCtx) {
         if (chartExpenses) chartExpenses.destroy();
-        const labels = expensesData?.dates || Array.from({length: 31}, (_, i) => (i + 1).toString());
-        const values = expensesData?.values || Array(31).fill(0);
+
+        // حساب المجموع لكل تصنيف من المصروفات الفعلية
+        const catMap = { 'جاز': 0, 'عهدة': 0, 'صيانة': 0 };
+        let شركة = 0; // باقي التصنيفات
+        const expenses = expensesData?.expenses || [];
+        for (const ex of expenses) {
+            const cat = (ex.category || '').trim();
+            const amt = parseFloat(ex.amount) || 0;
+            if (catMap.hasOwnProperty(cat)) {
+                catMap[cat] += amt;
+            } else {
+                شركة += amt;
+            }
+        }
+
+        const labels = ['الجاز', 'العهدة', 'الصيانة', 'شركة'];
+        const values = [catMap['جاز'], catMap['عهدة'], catMap['صيانة'], شركة];
+        const brandOrange = '#ff6b00';
+        const bgColors = [
+            'rgba(255,107,0,0.75)',
+            'rgba(255,107,0,0.5)',
+            'rgba(255,107,0,0.35)',
+            'rgba(255,107,0,0.2)',
+        ];
+
         chartExpenses = new Chart(expCtx, {
-            type: 'line',
+            type: 'bar',
             data: {
                 labels: labels,
                 datasets: [{
-                    label: 'المصروفات',
+                    label: 'ج.م',
                     data: values,
-                    borderColor: orange,
-                    backgroundColor: 'rgba(249,115,22,0.08)',
-                    fill: true,
-                    tension: 0.4,
-                    pointRadius: 3,
-                    pointBackgroundColor: orange,
-                    borderWidth: 2,
+                    backgroundColor: bgColors,
+                    borderColor: bgColors.map(() => brandOrange),
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    barPercentage: 0.6,
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ctx.parsed.y.toLocaleString() + ' ج.م'
+                        }
+                    }
+                },
                 scales: {
-                    x: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } } },
-                    y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 }, callback: v => v + ' ج.م' } }
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: textColor, font: { size: 10 } }
+                    },
+                    y: {
+                        grid: { color: gridColor },
+                        ticks: { color: textColor, font: { size: 10 }, callback: v => v.toLocaleString() + ' ج.م' }
+                    }
                 }
             }
         });
@@ -2334,20 +2364,26 @@ function setButtonLoading(buttonElement, isLoading, textContent) {
 }
 
 function setupUserLayout() {
-    const roleBadge = document.getElementById("badge-role");
     const nameTxt = document.getElementById("txt-user-name");
     const idTxt = document.getElementById("txt-user-id");
     const avatarTxt = document.getElementById("user-avatar");
+    const greetingTxt = document.getElementById("greeting-text");
 
-    if (roleBadge) {
-        roleBadge.innerText = state.user.role || "Guest";
-        roleBadge.style.background = state.user.role === "Admin" ? "rgba(249,115,22,0.15)" : "var(--bg-secondary)";
-        roleBadge.style.color = state.user.role === "Admin" ? "#f97316" : "var(--text-secondary)";
-        roleBadge.style.borderColor = state.user.role === "Admin" ? "rgba(249,115,22,0.3)" : "var(--border-color)";
-    }
     if (nameTxt) nameTxt.innerText = state.user.name || "مستخدم";
     if (idTxt) idTxt.innerText = `ID: ${state.user.id || '---'}`;
     if (avatarTxt) avatarTxt.innerText = state.user.name ? state.user.name.charAt(0).toUpperCase() : "M";
+
+    // تحية حسب الوقت
+    if (greetingTxt) {
+        const h = new Date().getHours();
+        const name = state.user.name || 'مستخدم';
+        let greet = 'مرحباً';
+        if (h >= 5 && h < 12) greet = 'صباح الخير';
+        else if (h >= 12 && h < 17) greet = 'مساء الخير';
+        else if (h >= 17 && h < 21) greet = 'مساء الخير';
+        else greet = 'مساء الخير';
+        greetingTxt.innerText = `${greet}، ${name}`;
+    }
 
     const navSettings = document.getElementById("nav-settings");
     if (navSettings) {

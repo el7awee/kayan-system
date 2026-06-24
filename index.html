@@ -504,18 +504,23 @@
         <!-- 📌 القائمة الجانبية (Sidebar)              -->
         <!-- ========================================== -->
         <aside class="sidebar w-full md:w-64 border-l border-border flex flex-col">
-            <div class="header p-4 border-b border-border flex items-center justify-between">
-                <div class="flex items-center gap-2.5">
-                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white shadow-lg shadow-orange-500/20">
-                        <i class="fa-solid fa-truck-fast text-sm"></i>
+            <div class="header p-4 border-b border-border flex flex-col gap-2">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white shadow-lg shadow-orange-500/20">
+                            <i class="fa-solid fa-truck-fast text-xs"></i>
+                        </div>
+                        <span id="greeting-text" class="font-bold tracking-tight text-sm">مرحباً</span>
                     </div>
-                    <span class="font-bold tracking-tight text-sm">منظومة الكيان</span>
-                </div>
-                <div class="flex items-center gap-1.5">
-                    <button id="btn-theme-toggle" class="w-7 h-7 rounded-lg bg-secondary hover:bg-hover border border-border flex items-center justify-center text-xs transition" title="تبديل الوضع">
-                        <i class="fa-solid fa-moon"></i>
-                    </button>
-                    <span id="badge-role" class="text-[10px] px-2 py-0.5 rounded-full bg-secondary text-secondary border border-border font-mono">Role</span>
+                    <div class="flex items-center gap-1">
+                        <button id="btn-theme-toggle" class="w-7 h-7 rounded-lg bg-secondary hover:bg-hover border border-border flex items-center justify-center text-xs transition" title="تبديل الوضع">
+                            <i class="fa-solid fa-moon"></i>
+                        </button>
+                        <button id="btn-notif-bell" class="relative w-7 h-7 rounded-lg bg-secondary hover:bg-hover border border-border flex items-center justify-center text-xs transition" title="التنبيهات">
+                            <i class="fa-solid fa-bell text-amber-500"></i>
+                            <span id="bell-badge" class="absolute -top-1 -end-1 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[8px] font-bold flex items-center justify-center hidden">0</span>
+                        </button>
+                    </div>
                 </div>
             </div>
             
@@ -622,25 +627,12 @@
                     </div>
                 </div>
 
-                <!-- Notification Bar (improved) -->
-                <div id="notification-bar" class="chart-wrapper hidden" style="padding:0.75rem 1rem;">
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center flex-shrink-0"><i class="fa-solid fa-bell"></i></div>
-                        <div class="flex-1 min-w-0">
-                            <p id="notification-bar-message" class="text-sm font-medium truncate">تنبيه: رصيد البنزينة منخفض</p>
-                        </div>
-                        <button id="notification-bar-close" class="w-6 h-6 rounded-md bg-secondary hover:bg-hover flex items-center justify-center text-muted hover:text-primary transition flex-shrink-0">
-                            <i class="fa-solid fa-xmark text-xs"></i>
-                        </button>
-                    </div>
-                </div>
-
                 <!-- Charts Section (مثل Revalo) -->
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div class="chart-wrapper">
                         <div class="flex items-center justify-between mb-3">
-                            <h3 class="text-sm font-bold"><i class="fa-solid fa-chart-line text-orange-500 ml-2"></i>مصروفات الشهر</h3>
-                            <span class="text-[10px] text-muted">آخر 7 أيام</span>
+                            <h3 class="text-sm font-bold" style="color:#ff6b00;"><i class="fa-solid fa-chart-bar ml-2" style="color:#ff6b00;"></i>مصروفات الشهر</h3>
+                            <span class="text-[10px] text-muted">حسب التصنيف</span>
                         </div>
                         <canvas id="chart-expenses" height="180"></canvas>
                     </div>
