@@ -70,12 +70,10 @@ function driverService_createDriver(ss, params, userId) {
  * ─── جلب جميع السائقين ───
  */
 function driverService_getDrivers(ss) {
-  let sheet = ss.getSheetByName("Drivers");
-  if (!sheet) {
+  let data = getCachedData("Drivers");
+  if (!data) {
     return { "success": false, "message": "شيت Drivers غير موجود." };
   }
-  
-  let data = sheet.getDataRange().getValues();
   let drivers = [];
   
   for (let i = 1; i < data.length; i++) {

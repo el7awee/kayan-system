@@ -7,10 +7,9 @@
  * ─── إنشاء تنبيه جديد ───
  */
 function createNotification(userId, type, title, message, relatedId) {
-  let ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("Notifications");
+  let ss = getCachedSS();
+  let sheet = getCachedSheet("Notifications");
   if (!sheet) {
-    // لو مش موجود، ننشئه
     sheet = ss.insertSheet("Notifications");
     sheet.getRange(1, 1, 1, 9).setValues([[
       "Notification_ID", "User_ID", "Type", "Title", "Message", 
@@ -21,13 +20,10 @@ function createNotification(userId, type, title, message, relatedId) {
   let notificationId = generateNotificationId(sheet);
   let now = new Date().toISOString();
   
-  // تحديد المستخدمين المستهدفين
   let targetUsers = [];
   if (userId === "SYSTEM" || userId === "ALL") {
-    // تنبيه للنظام كله - نجيب كل المستخدمين النشطين
-    let usersSheet = ss.getSheetByName("Users");
-    if (usersSheet) {
-      let usersData = usersSheet.getDataRange().getValues();
+    let usersData = getCachedData("Users");
+    if (usersData) {
       for (let i = 1; i < usersData.length; i++) {
         if (usersData[i][5] === "ACTIVE" && usersData[i][11] !== true) {
           targetUsers.push(usersData[i][0]);
@@ -38,7 +34,6 @@ function createNotification(userId, type, title, message, relatedId) {
     targetUsers.push(userId);
   }
   
-  // إضافة التنبيه لكل مستخدم مستهدف
   for (let uid of targetUsers) {
     sheet.appendRow([
       notificationId + "-" + uid.substring(0, 5),
@@ -47,13 +42,12 @@ function createNotification(userId, type, title, message, relatedId) {
       title,
       message,
       relatedId || "",
-      false,  // Is_Read
-      false,  // Is_Sent_Email
+      false,
+      false,
       now
     ]);
   }
   
-  // تسجيل في Audit Log
   logApiAudit("SYSTEM", "SYSTEM", "createNotification", 0, "N/A", 200);
   
   return { "success": true, "notification_id": notificationId };
@@ -63,12 +57,10 @@ function createNotification(userId, type, title, message, relatedId) {
  * ─── جلب تنبيهات المستخدم ───
  */
 function notificationService_getNotifications(ss, userId) {
-  let sheet = ss.getSheetByName("Notifications");
-  if (!sheet) {
+  let data = getCachedData("Notifications");
+  if (!data) {
     return { "success": false, "message": "شيت Notifications غير موجود." };
   }
-  
-  let data = sheet.getDataRange().getValues();
   let notifications = [];
   let unreadCount = 0;
   
@@ -111,7 +103,7 @@ function notificationService_getNotifications(ss, userId) {
  * ─── تحديد تنبيه كمقروء ───
  */
 function notificationService_markRead(ss, params, userId) {
-  let sheet = ss.getSheetByName("Notifications");
+  let sheet = getCachedSheet("Notifications");
   if (!sheet) {
     return { "success": false, "message": "شيت Notifications غير موجود." };
   }
@@ -121,12 +113,12 @@ function notificationService_markRead(ss, params, userId) {
     return { "success": false, "message": "Notification_ID مطلوب." };
   }
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("Notifications");
   let found = false;
   
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === notificationId && data[i][1] === userId) {
-      sheet.getRange(i + 1, 7).setValue(true); // Is_Read
+      sheet.getRange(i + 1, 7).setValue(true);
       found = true;
       break;
     }
@@ -145,12 +137,12 @@ function notificationService_markRead(ss, params, userId) {
  * ─── تحديد جميع التنبيهات كمقروءة ───
  */
 function notificationService_markAllRead(ss, userId) {
-  let sheet = ss.getSheetByName("Notifications");
+  let sheet = getCachedSheet("Notifications");
   if (!sheet) {
     return { "success": false, "message": "شيت Notifications غير موجود." };
   }
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("Notifications");
   let count = 0;
   
   for (let i = 1; i < data.length; i++) {
@@ -172,7 +164,7 @@ function notificationService_markAllRead(ss, userId) {
  * ─── حذف تنبيه (حذف ناعم) ───
  */
 function notificationService_deleteNotification(ss, params, userId) {
-  let sheet = ss.getSheetByName("Notifications");
+  let sheet = getCachedSheet("Notifications");
   if (!sheet) {
     return { "success": false, "message": "شيت Notifications غير موجود." };
   }
@@ -182,7 +174,7 @@ function notificationService_deleteNotification(ss, params, userId) {
     return { "success": false, "message": "Notification_ID مطلوب." };
   }
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("Notifications");
   let found = false;
   
   for (let i = 1; i < data.length; i++) {
@@ -276,14 +268,11 @@ function sendEmailNotifications() {
  * ─── جلب إيميل المستخدم ───
  */
 function getUserEmail(userId) {
-  let ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("Users");
-  if (!sheet) return null;
+  let data = getCachedData("Users");
+  if (!data) return null;
   
-  let data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === userId) {
-      // عمود Email هو العمود 13 (M) - تم إضافته
       return data[i][12] || null;
     }
   }

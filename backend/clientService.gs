@@ -66,12 +66,10 @@ function clientService_createClient(ss, params, userId) {
  * ─── جلب جميع العملاء ───
  */
 function clientService_getClients(ss) {
-  let sheet = ss.getSheetByName("Clients");
-  if (!sheet) {
+  let data = getCachedData("Clients");
+  if (!data) {
     return { "success": false, "message": "شيت Clients غير موجود." };
   }
-  
-  let data = sheet.getDataRange().getValues();
   let clients = [];
   
   for (let i = 1; i < data.length; i++) {

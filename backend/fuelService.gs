@@ -7,12 +7,14 @@
  * ─── جلب رصيد البنزينة الحالي ───
  */
 function fuelService_getBalance(ss) {
-  let sheet = ss.getSheetByName("Fuel_Balance");
+  startTimer("fuelService_getBalance");
+  
+  let sheet = getCachedSheet("Fuel_Balance");
   if (!sheet) {
     return { "success": false, "message": "شيت Fuel_Balance غير موجود." };
   }
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("Fuel_Balance");
   let balance = 0;
   let lastUpdated = "";
   let updatedBy = "";
@@ -27,8 +29,10 @@ function fuelService_getBalance(ss) {
     }
   }
   
-  // 🆕 جلب سعر اللتر من System_Settings
+  // جلب سعر اللتر من System_Settings
   let fuelPrice = getFuelPrice();
+  
+  endTimer("fuelService_getBalance");
   
   return {
     "success": true,
@@ -45,7 +49,9 @@ function fuelService_getBalance(ss) {
  * ─── إضافة رصيد للبنزينة ───
  */
 function fuelService_addBalance(ss, params, userId) {
-  let sheet = ss.getSheetByName("Fuel_Balance");
+  startTimer("fuelService_addBalance");
+  
+  let sheet = getCachedSheet("Fuel_Balance");
   if (!sheet) {
     return { "success": false, "message": "شيت Fuel_Balance غير موجود." };
   }
@@ -59,7 +65,7 @@ function fuelService_addBalance(ss, params, userId) {
   
   // جلب الرصيد الحالي
   let currentBalance = 0;
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("Fuel_Balance");
   for (let i = data.length - 1; i >= 1; i--) {
     if (data[i][1] !== undefined && data[i][1] !== "") {
       currentBalance = parseFloat(data[i][1]) || 0;
@@ -95,7 +101,7 @@ function fuelService_addBalance(ss, params, userId) {
   
   logApiAudit(userId, "Accountant", "addFuelBalance", 0, "N/A", 200);
   
-  // 🆕 إنشاء تنبيه لو الرصيد أصبح أعلى من الصفر
+  // إنشاء تنبيه لو الرصيد أصبح أعلى من الصفر
   if (currentBalance < 0 && newBalance >= 0) {
     createNotification(
       'SYSTEM',
@@ -105,6 +111,8 @@ function fuelService_addBalance(ss, params, userId) {
       ''
     );
   }
+  
+  endTimer("fuelService_addBalance");
   
   return {
     "success": true,
@@ -121,7 +129,9 @@ function fuelService_addBalance(ss, params, userId) {
  * ─── جلب حركة الجاز ───
  */
 function fuelService_getTransactions(ss, params) {
-  let sheet = ss.getSheetByName("Fuel_Transactions");
+  startTimer("fuelService_getTransactions");
+  
+  let sheet = getCachedSheet("Fuel_Transactions");
   if (!sheet) {
     return { "success": false, "message": "شيت Fuel_Transactions غير موجود." };
   }
@@ -130,7 +140,7 @@ function fuelService_getTransactions(ss, params) {
   let vehicleId = params.Vehicle_ID || "";
   let transactionType = params.Transaction_Type || "";
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("Fuel_Transactions");
   let transactions = [];
   
   for (let i = data.length - 1; i >= 1; i--) {
@@ -159,6 +169,8 @@ function fuelService_getTransactions(ss, params) {
     if (transactions.length >= limit) break;
   }
   
+  endTimer("fuelService_getTransactions");
+  
   return { "success": true, "data": transactions };
 }
 
@@ -166,7 +178,9 @@ function fuelService_getTransactions(ss, params) {
  * ─── تحديث سعر اللتر ───
  */
 function fuelService_updatePrice(ss, params, userId) {
-  let sheet = ss.getSheetByName("System_Settings");
+  startTimer("fuelService_updatePrice");
+  
+  let sheet = getCachedSheet("System_Settings");
   if (!sheet) {
     return { "success": false, "message": "شيت System_Settings غير موجود." };
   }
@@ -176,7 +190,7 @@ function fuelService_updatePrice(ss, params, userId) {
     return { "success": false, "message": "سعر اللتر غير صالح." };
   }
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("System_Settings");
   let found = false;
   let now = new Date().toISOString();
   
@@ -194,7 +208,7 @@ function fuelService_updatePrice(ss, params, userId) {
   
   logApiAudit(userId, "Manager", "updateFuelPrice", 0, "N/A", 200);
   
-  // 🆕 إنشاء تنبيه بتغيير السعر
+  // إنشاء تنبيه بتغيير السعر
   createNotification(
     'SYSTEM',
     'FUEL_PRICE_CHANGED',
@@ -202,6 +216,8 @@ function fuelService_updatePrice(ss, params, userId) {
     `تم تغيير سعر اللتر إلى ${newPrice} ج.م`,
     ''
   );
+  
+  endTimer("fuelService_updatePrice");
   
   return {
     "success": true,
@@ -218,11 +234,10 @@ function fuelService_updatePrice(ss, params, userId) {
  * ─── جلب سعر اللتر الحالي ───
  */
 function getFuelPrice() {
-  let ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("System_Settings");
+  let sheet = getCachedSheet("System_Settings");
   if (!sheet) return 20.50;
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("System_Settings");
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === "FUEL_PRICE_PER_LITER") {
       return parseFloat(data[i][1]) || 20.50;
@@ -236,11 +251,10 @@ function getFuelPrice() {
  * ─── جلب رصيد البنزينة (تُستخدم في tripService) ───
  */
 function getFuelBalance() {
-  let ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("Fuel_Balance");
+  let sheet = getCachedSheet("Fuel_Balance");
   if (!sheet) return 0;
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("Fuel_Balance");
   for (let i = data.length - 1; i >= 1; i--) {
     if (data[i][1] !== undefined && data[i][1] !== "") {
       return parseFloat(data[i][1]) || 0;
@@ -254,8 +268,7 @@ function getFuelBalance() {
  * ─── تحديث رصيد البنزينة (تُستخدم في tripService) ───
  */
 function updateFuelBalance(newBalance, userId, note) {
-  let ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("Fuel_Balance");
+  let sheet = getCachedSheet("Fuel_Balance");
   if (!sheet) return;
   
   let balanceId = generateBalanceId(sheet);
@@ -268,7 +281,7 @@ function updateFuelBalance(newBalance, userId, note) {
     userId || "SYSTEM"
   ]);
   
-  // 🆕 التحقق من الرصيد المنخفض
+  // التحقق من الرصيد المنخفض
   let threshold = getLowFuelThreshold();
   if (newBalance < threshold) {
     createNotification(
@@ -279,17 +292,17 @@ function updateFuelBalance(newBalance, userId, note) {
       ''
     );
   }
+  
 }
 
 /**
  * ─── جلب حد التنبيه للرصيد المنخفض ───
  */
 function getLowFuelThreshold() {
-  let ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("System_Settings");
+  let sheet = getCachedSheet("System_Settings");
   if (!sheet) return 10000;
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("System_Settings");
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === "LOW_FUEL_THRESHOLD") {
       return parseFloat(data[i][1]) || 10000;
@@ -317,12 +330,13 @@ function generateBalanceId(sheet) {
   let nextNum = maxNum + 1;
   return "BAL-" + String(nextNum).padStart(3, '0');
 }
+
 /**
  * ─── تسجيل حركة الجاز في Fuel_Transactions ───
  */
 function logFuelTransaction(data) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName("Fuel_Transactions");
+  let ss = getCachedSS();
+  let sheet = getCachedSheet("Fuel_Transactions");
   if (!sheet) {
     // لو مش موجود، ننشئه
     sheet = ss.insertSheet("Fuel_Transactions");
@@ -333,8 +347,8 @@ function logFuelTransaction(data) {
     ]]);
   }
   
-  var transactionId = "FUEL-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
-  var now = new Date().toISOString();
+  let transactionId = "FUEL-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
+  let now = new Date().toISOString();
   
   sheet.appendRow([
     transactionId,

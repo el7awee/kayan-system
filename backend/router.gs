@@ -60,7 +60,7 @@ function routeRequest(e, method, userId, userRole) {
   
   try {
     if (isWriteOperation) {
-      let hasLock = lock.tryLock(30000);
+      let hasLock = lock.tryLock(3000);
       if (!hasLock) {
         return createJsonResponse({
           "success": false,
@@ -313,12 +313,12 @@ function checkIfWriteOperation(action) {
 // ==========================================
 
 function userService_createUser(ss, params, requestingUserId) {
-  let sheet = ss.getSheetByName("Users");
+  let sheet = getCachedSheet("Users");
   if (!sheet) {
     return { "success": false, "message": "شيت Users غير موجود!" };
   }
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("Users");
   let username = params.New_Username?.trim().toLowerCase() || "";
   let fullName = params.Full_Name?.trim() || "";
   let password = params.New_Password || "";
@@ -374,12 +374,10 @@ function userService_createUser(ss, params, requestingUserId) {
 }
 
 function userService_getUsers(ss) {
-  let sheet = ss.getSheetByName("Users");
-  if (!sheet) {
+  let data = getCachedData("Users");
+  if (!data) {
     return { "success": false, "message": "شيت Users غير موجود." };
   }
-  
-  let data = sheet.getDataRange().getValues();
   let sanitizedData = [];
   
   for (let i = 1; i < data.length; i++) {
@@ -551,12 +549,10 @@ function userService_resetPassword(ss, params) {
 
 function tripService_getTrips(e) {
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName("Trips_Log");
-    if (!sheet) {
+    var data = getCachedData("Trips_Log");
+    if (!data) {
       return { "success": false, "message": "شيت Trips_Log غير موجود." };
     }
-    var data = sheet.getDataRange().getValues();
     if (data.length <= 1) {
       return { "success": true, "data": [] };
     }

@@ -11,8 +11,8 @@ const EXPENSES_DRIVE_FOLDER_ID = "1NiRSLKcUnL2eFb0huo414h_BmZSnluXsq_GszYIxMMc";
  * 1. دالة إضافة مصروف مع إيصال (addExpense) - معدلة
  */
 function expenseService_addExpense(e, userId) {
-  let ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("Expenses_Log");
+  let ss = getCachedSS();
+  let sheet = getCachedSheet("Expenses_Log");
   if (!sheet) throwBusinessError("SYSTEM_ERROR", "شيت Expenses_Log غير موجود.");
   
   let tripId = e.parameter.Trip_ID;
@@ -158,12 +158,10 @@ function expenseService_getTripExpenses(ss, params) {
     return { "success": false, "message": "Trip_ID مطلوب." };
   }
   
-  let sheet = ss.getSheetByName("Expenses_Log");
-  if (!sheet) {
+  let data = getCachedData("Expenses_Log");
+  if (!data) {
     return { "success": false, "message": "شيت Expenses_Log غير موجود." };
   }
-  
-  let data = sheet.getDataRange().getValues();
   let expenses = [];
   
   for (let i = 1; i < data.length; i++) {
@@ -190,12 +188,10 @@ function expenseService_getTripExpenses(ss, params) {
  * 4. دالة جلب مصروفات الشهر الحالي
  */
 function expenseService_getMonthlyExpenses(ss) {
-  let sheet = ss.getSheetByName("Expenses_Log");
-  if (!sheet) {
+  let data = getCachedData("Expenses_Log");
+  if (!data) {
     return { "success": false, "message": "شيت Expenses_Log غير موجود." };
   }
-  
-  let data = sheet.getDataRange().getValues();
   let now = new Date();
   let currentMonth = now.getMonth();
   let currentYear = now.getFullYear();

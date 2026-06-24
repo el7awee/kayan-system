@@ -72,12 +72,10 @@ function vehicleService_createVehicle(ss, params, userId) {
  * ─── جلب جميع العربيات ───
  */
 function vehicleService_getVehicles(ss) {
-  let sheet = ss.getSheetByName("Vehicles");
-  if (!sheet) {
+  let data = getCachedData("Vehicles");
+  if (!data) {
     return { "success": false, "message": "شيت Vehicles غير موجود." };
   }
-  
-  let data = sheet.getDataRange().getValues();
   let vehicles = [];
   
   for (let i = 1; i < data.length; i++) {

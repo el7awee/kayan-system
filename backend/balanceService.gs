@@ -11,11 +11,10 @@
  * ─── جلب رصيد مستخدم ───
  */
 function balanceService_getBalance(userId) {
-  let ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("Users");
+  let sheet = getCachedSheet("Users");
   if (!sheet) return 0;
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("Users");
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === userId && data[i][11] !== true) {
       return parseFloat(data[i][12]) || 0; // العمود M (13) هو Current_Balance
@@ -28,11 +27,12 @@ function balanceService_getBalance(userId) {
  * ─── تحديث رصيد مستخدم ───
  */
 function balanceService_updateBalance(userId, amount, transactionType, relatedUserId, tripId, notes, createdBy) {
-  let ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("Users");
+  startTimer("balanceService_updateBalance_" + userId);
+  
+  let sheet = getCachedSheet("Users");
   if (!sheet) return;
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("Users");
   let found = false;
   let currentBalance = 0;
   let rowIndex = -1;
@@ -54,6 +54,8 @@ function balanceService_updateBalance(userId, amount, transactionType, relatedUs
   // تسجيل الحركة في سجل العهدات
   balanceService_logTransaction(userId, amount, newBalance, transactionType, relatedUserId, tripId, notes, createdBy);
   
+  endTimer("balanceService_updateBalance_" + userId);
+  
   return newBalance;
 }
 
@@ -61,8 +63,8 @@ function balanceService_updateBalance(userId, amount, transactionType, relatedUs
  * ─── تسجيل حركة عهدة ───
  */
 function balanceService_logTransaction(userId, amount, balanceAfter, transactionType, relatedUserId, tripId, notes, createdBy) {
-  let ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("Balance_Transactions");
+  let ss = getCachedSS();
+  let sheet = getCachedSheet("Balance_Transactions");
   if (!sheet) {
     sheet = ss.insertSheet("Balance_Transactions");
     sheet.getRange(1, 1, 1, 10).setValues([[
@@ -93,11 +95,12 @@ function balanceService_logTransaction(userId, amount, balanceAfter, transaction
  * ─── جلب حركات مستخدم ───
  */
 function balanceService_getTransactions(userId, limit) {
-  let ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("Balance_Transactions");
+  startTimer("balanceService_getTransactions_" + userId);
+  
+  let sheet = getCachedSheet("Balance_Transactions");
   if (!sheet) return [];
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("Balance_Transactions");
   let transactions = [];
   let count = 0;
   
@@ -120,6 +123,8 @@ function balanceService_getTransactions(userId, limit) {
     }
   }
   
+  endTimer("balanceService_getTransactions_" + userId);
+  
   return transactions;
 }
 
@@ -127,11 +132,12 @@ function balanceService_getTransactions(userId, limit) {
  * ─── جلب كل حركات العهدات (للمدير/المحاسب) ───
  */
 function balanceService_fetchAllTransactionsList(limit) {
-  let ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("Balance_Transactions");
+  startTimer("balanceService_fetchAllTransactionsList");
+  
+  let sheet = getCachedSheet("Balance_Transactions");
   if (!sheet) return [];
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("Balance_Transactions");
   let transactions = [];
   let count = 0;
   
@@ -152,6 +158,8 @@ function balanceService_fetchAllTransactionsList(limit) {
     if (count >= (limit || 100)) break;
   }
   
+  endTimer("balanceService_fetchAllTransactionsList");
+  
   return transactions;
 }
 
@@ -159,12 +167,16 @@ function balanceService_fetchAllTransactionsList(limit) {
  * ─── إيداع عهدة لمستخدم (من المدير/المحاسب) ───
  */
 function balanceService_addBalance(userId, amount, notes, createdBy) {
+  startTimer("balanceService_addBalance_" + userId);
+  
   if (amount <= 0) {
     return { success: false, message: "المبلغ يجب أن يكون أكبر من صفر." };
   }
   
   let currentBalance = balanceService_getBalance(userId);
   let newBalance = balanceService_updateBalance(userId, amount, 'ADD', '', '', notes, createdBy);
+  
+  endTimer("balanceService_addBalance_" + userId);
   
   return {
     success: true,
@@ -182,6 +194,8 @@ function balanceService_addBalance(userId, amount, notes, createdBy) {
  * ─── صرف عهدة من مستخدم (للمدير فقط) ───
  */
 function balanceService_deductBalance(userId, amount, notes, createdBy) {
+  startTimer("balanceService_deductBalance_" + userId);
+  
   if (amount <= 0) {
     return { success: false, message: "المبلغ يجب أن يكون أكبر من صفر." };
   }
@@ -192,6 +206,8 @@ function balanceService_deductBalance(userId, amount, notes, createdBy) {
   }
   
   let newBalance = balanceService_updateBalance(userId, -amount, 'DEDUCT', '', '', notes, createdBy);
+  
+  endTimer("balanceService_deductBalance_" + userId);
   
   return {
     success: true,
@@ -209,6 +225,8 @@ function balanceService_deductBalance(userId, amount, notes, createdBy) {
  * ─── تحويل عهدة بين مستخدمين ───
  */
 function balanceService_transferBalance(fromUserId, toUserId, amount, notes, createdBy) {
+  startTimer("balanceService_transferBalance_" + fromUserId + "_to_" + toUserId);
+  
   if (amount <= 0) {
     return { success: false, message: "المبلغ يجب أن يكون أكبر من صفر." };
   }
@@ -231,8 +249,12 @@ function balanceService_transferBalance(fromUserId, toUserId, amount, notes, cre
   } catch (transferError) {
     // تراجع: نرجّع المبلغ للمرسل تاني
     balanceService_updateBalance(fromUserId, amount, 'TRANSFER_ROLLBACK', toUserId, '', `تراجع تحويل فاشل: ${notes || ''}`, createdBy);
+    endTimer("balanceService_transferBalance_" + fromUserId + "_to_" + toUserId);
+    clearExecutionCache();
     return { success: false, message: "فشل التحويل وتم إرجاع المبلغ للمرسل: " + transferError.message };
   }
+  
+  endTimer("balanceService_transferBalance_" + fromUserId + "_to_" + toUserId);
   
   return {
     success: true,

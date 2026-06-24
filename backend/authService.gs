@@ -13,13 +13,15 @@ const SALT_ROUNDS = 10;
  * ─── دالة التهيئة الأولية للنظام ───
  */
 function initializeSystem() {
-  let ss = SpreadsheetApp.getActiveSpreadsheet();
+  startTimer("initializeSystem");
+  
+  let ss = getCachedSS();
   
   // 1. التأكد من وجود جميع الشيتات المطلوبة
   ensureSheetsExist(ss);
   
   // 2. إنشاء مستخدم Admin افتراضي إذا لم يكن موجوداً
-  let usersSheet = ss.getSheetByName("Users");
+  let usersSheet = getCachedSheet("Users");
   if (!usersSheet) {
     usersSheet = ss.insertSheet("Users");
     usersSheet.getRange(1, 1, 1, 13).setValues([[
@@ -29,7 +31,7 @@ function initializeSystem() {
     ]]);
   }
   
-  let data = usersSheet.getDataRange().getValues();
+  let data = getCachedData("Users");
   let adminExists = false;
   
   for (let i = 1; i < data.length; i++) {
@@ -68,8 +70,11 @@ function initializeSystem() {
     console.log("ℹ️ مستخدم Admin موجود مسبقاً.");
   }
   
-  // 🆕 إضافة الإعدادات الافتراضية في System_Settings
+  // إضافة الإعدادات الافتراضية في System_Settings
   initializeSystemSettings(ss);
+  
+  endTimer("initializeSystem");
+  clearExecutionCache();
 }
 
 /**
@@ -80,12 +85,12 @@ function ensureSheetsExist(ss) {
     // الشيتات القديمة
     "Users", "Trips_Log", "Expenses_Log", 
     "Idempotency_Cache", "Trips_Archive",
-    // 🆕 الشيتات الجديدة
+    // الشيتات الجديدة
     "Vehicles", "Drivers", "Clients",
     "Fuel_Balance", "Fuel_Transactions",
     "Trip_Advances", "Notifications",
     "System_Settings",
-    // 🆕 شيت العهدات
+    // شيت العهدات
     "Balance_Transactions"
   ];
   
@@ -124,10 +129,10 @@ function addSheetHeaders(sheet, sheetName) {
  * ─── إضافة الإعدادات الافتراضية في System_Settings ───
  */
 function initializeSystemSettings(ss) {
-  let sheet = ss.getSheetByName("System_Settings");
+  let sheet = getCachedSheet("System_Settings");
   if (!sheet) return;
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("System_Settings");
   let settings = {
     'FUEL_PRICE_PER_LITER': '20.50',
     'ARCHIVE_THRESHOLD_MONTHS': '6',
@@ -146,15 +151,18 @@ function initializeSystemSettings(ss) {
       console.log(`⚙️ تم إضافة الإعداد: ${key} = ${value}`);
     }
   }
+  
+  clearExecutionCache();
 }
 
 // ==========================================
-// دوال تسجيل الدخول والتحقق (نفسها القديمة)
+// دوال تسجيل الدخول والتحقق
 // ==========================================
 
 function authService_login(params) {
-  let ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("Users");
+  startTimer("authService_login");
+  
+  let sheet = getCachedSheet("Users");
   if (!sheet) {
     return { success: false, message: "خطأ: شيت المستخدمين غير موجود." };
   }
@@ -166,7 +174,7 @@ function authService_login(params) {
     return { success: false, message: "يرجى إدخال اسم المستخدم وكلمة المرور." };
   }
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("Users");
   
   for (let i = 1; i < data.length; i++) {
     let dbUsername = data[i][2]?.toString().toLowerCase() || "";
@@ -188,6 +196,9 @@ function authService_login(params) {
         sheet.getRange(i + 1, 11).setValue(expiry.toISOString());
         sheet.getRange(i + 1, 9).setValue(now);
         
+        endTimer("authService_login");
+        clearExecutionCache();
+        
         return {
           success: true,
           user_id: data[i][0],
@@ -199,57 +210,64 @@ function authService_login(params) {
           message: `مرحباً ${data[i][1]}`
         };
       } else {
+        endTimer("authService_login");
         return { success: false, message: "كلمة المرور غير صحيحة." };
       }
     }
   }
   
+  endTimer("authService_login");
+  clearExecutionCache();
   return { success: false, message: "اسم المستخدم غير موجود." };
 }
 
 function authService_validateToken(token, userId) {
+  startTimer("authService_validateToken");
+  
   if (!token || token === "null" || token === "") {
     return { valid: false, message: "توكن الجلسة مفقود." };
   }
-  
-  // كاش قصير المدى للتوكن (60 ثانية) لتجنّب قراءة شيت المستخدمين بالكامل مع كل طلب
+
+  // كاش التوكن: 6 ساعات (طويل المدى)
   let cache = CacheService.getScriptCache();
   let cacheKey = "tokv_" + token;
   let cachedRaw = cache.get(cacheKey);
   if (cachedRaw) {
     try {
       let cachedObj = JSON.parse(cachedRaw);
+      console.log("✅ [Token from Cache]");
       if (!userId || cachedObj.user_id === userId) {
+        endTimer("authService_validateToken");
         return cachedObj;
       }
-    } catch (err) { /* تجاهل الكاش التالف وأعد القراءة من الشيت */ }
+    } catch (err) { }
   }
-  
-  let ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("Users");
+
+  // قراءة من الشيت (مرة واحدة فقط بعد انتهاء الكاش)
+  let sheet = getCachedSheet("Users");
   if (!sheet) {
     return { valid: false, message: "خطأ: شيت المستخدمين غير موجود." };
   }
-  
-  let data = sheet.getDataRange().getValues();
+
+  let data = getCachedData("Users");
   let now = new Date();
-  
+
   for (let i = 1; i < data.length; i++) {
     let dbToken = data[i][9] || "";
     let dbUserId = data[i][0] || "";
     let expiryStr = data[i][10] || "";
     let status = data[i][5] || "INACTIVE";
     let isDeleted = data[i][11] || false;
-    
+
     if (isDeleted === true || isDeleted === "TRUE" || status !== "ACTIVE") {
       continue;
     }
-    
+
     if (dbToken === token) {
       if (userId && dbUserId !== userId) {
         return { valid: false, message: "التوكن لا يخص هذا المستخدم." };
       }
-      
+
       if (expiryStr) {
         let expiry = new Date(expiryStr);
         if (expiry <= now) {
@@ -258,7 +276,7 @@ function authService_validateToken(token, userId) {
       } else {
         return { valid: false, message: "التوكن غير صالح." };
       }
-      
+
       let okResult = {
         valid: true,
         user_id: dbUserId,
@@ -266,37 +284,46 @@ function authService_validateToken(token, userId) {
         username: data[i][2],
         role: data[i][4]
       };
-      cache.put(cacheKey, JSON.stringify(okResult), 60);
+      
+      // احفظ في الكاش (6 ساعات = 21600 ثانية)
+      cache.put(cacheKey, JSON.stringify(okResult), 21600);
+      console.log("✅ [Token cached for 6 hours]");
+      
+      endTimer("authService_validateToken");
+      clearExecutionCache();
       return okResult;
     }
   }
-  
+
+  endTimer("authService_validateToken");
+  clearExecutionCache();
   return { valid: false, message: "التوكن غير صالح." };
 }
 
 function authService_logout(userId) {
-  let ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("Users");
+  startTimer("authService_logout");
+  
+  let sheet = getCachedSheet("Users");
   if (!sheet) return;
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("Users");
   
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === userId) {
-      let oldToken = data[i][9] || "";
-      if (oldToken) {
-        CacheService.getScriptCache().remove("tokv_" + oldToken);
-      }
       sheet.getRange(i + 1, 10).setValue("");
       sheet.getRange(i + 1, 11).setValue("");
       break;
     }
   }
+  
+  endTimer("authService_logout");
+  clearExecutionCache();
 }
 
 function authService_changePassword(params, requestingUserId) {
-  let ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("Users");
+  startTimer("authService_changePassword");
+  
+  let sheet = getCachedSheet("Users");
   if (!sheet) {
     return { success: false, message: "شيت المستخدمين غير موجود." };
   }
@@ -309,7 +336,7 @@ function authService_changePassword(params, requestingUserId) {
     return { success: false, message: "كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل." };
   }
   
-  let data = sheet.getDataRange().getValues();
+  let data = getCachedData("Users");
   let found = false;
   
   for (let i = 1; i < data.length; i++) {
@@ -328,8 +355,12 @@ function authService_changePassword(params, requestingUserId) {
   }
   
   if (!found) {
+    endTimer("authService_changePassword");
     return { success: false, message: "المستخدم غير موجود." };
   }
+  
+  endTimer("authService_changePassword");
+  clearExecutionCache();
   
   return { success: true, message: "تم تغيير كلمة المرور بنجاح." };
 }
@@ -355,7 +386,7 @@ function generateSalt() {
 }
 
 /**
- * تشفير كلمة المرور بصيغة salted: "salt:hash" حيث hash = SHA256(salt + password).
+ * تشفير كلمة المرور بصيغة salted: "salt:hash"
  */
 function hashPassword(password) {
   let salt = generateSalt();
@@ -365,7 +396,6 @@ function hashPassword(password) {
 
 /**
  * التحقق من كلمة المرور.
- * يدعم الصيغتين: الجديدة (salt:hash) والقديمة (SHA256 بدون ملح) للتوافق العكسي.
  */
 function verifyPassword(plainPassword, hashedPassword) {
   if (!hashedPassword) return false;
@@ -377,7 +407,7 @@ function verifyPassword(plainPassword, hashedPassword) {
     return sha256Hex(salt + plainPassword) === storedHash;
   }
 
-  // صيغة قديمة (بدون ملح) — للتوافق مع الحسابات المسجّلة قبل التحديث
+  // صيغة قديمة (بدون ملح) — للتوافق
   return sha256Hex(plainPassword) === hashedPassword;
 }
 
@@ -405,7 +435,13 @@ function generateUserId(sheet) {
 }
 
 function authService_getUserFromToken(token) {
+  startTimer("authService_getUserFromToken");
+  
   let result = authService_validateToken(token, null);
+  
+  endTimer("authService_getUserFromToken");
+  clearExecutionCache();
+  
   if (result.valid) {
     return {
       user_id: result.user_id,
