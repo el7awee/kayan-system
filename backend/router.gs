@@ -248,6 +248,21 @@ function routeRequest(e, method, userId, userRole) {
       case 'getTripExpenses':
         resultPayload = expenseService_getTripExpenses(ss, e.parameter);
         break;
+      case 'getMaintenance':
+        resultPayload = maintenanceService_getAll(ss, e.parameter);
+        break;
+      case 'getVehicleMaintenance':
+        resultPayload = maintenanceService_getByVehicle(ss, e.parameter);
+        break;
+      case 'getTripMaintenance':
+        resultPayload = maintenanceService_getByTrip(ss, e.parameter);
+        break;
+      case 'updateMaintenance':
+        resultPayload = maintenanceService_updateMaintenance(ss, e.parameter, realUserId);
+        break;
+      case 'deleteMaintenance':
+        resultPayload = maintenanceService_deleteMaintenance(ss, e.parameter);
+        break;
       case 'getDashboard':
         resultPayload = aggregateService_getDashboard(ss, e, realUserId);
         break;
@@ -326,7 +341,8 @@ function checkIfWriteOperation(action) {
     'addFuelBalance', 'updateFuelPrice',
     'markNotificationRead', 'markAllNotificationsRead', 'deleteNotification',
     'settleDriverAdvance',
-    'addBalance', 'deductBalance', 'transferBalance'
+    'addBalance', 'deductBalance', 'transferBalance',
+    'updateMaintenance', 'deleteMaintenance'
   ];
   return writeActions.indexOf(action) !== -1;
 }

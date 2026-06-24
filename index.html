@@ -529,6 +529,7 @@
                 <button id="nav-trips" class="nav-item"><i class="fa-solid fa-route"></i> إدارة الرحلات</button>
                 <button id="nav-expenses" class="nav-item"><i class="fa-solid fa-money-bill-transfer"></i> المصروفات</button>
                 <button id="nav-fuel" class="nav-item"><i class="fa-solid fa-gas-pump"></i> البنزينة</button>
+                <button id="nav-maintenance" class="nav-item"><i class="fa-solid fa-wrench"></i> الصيانة</button>
                 <button id="nav-vehicles" class="nav-item"><i class="fa-solid fa-truck"></i> العربيات</button>
                 <button id="nav-drivers" class="nav-item"><i class="fa-solid fa-user-tie"></i> السائقين</button>
                 <button id="nav-clients" class="nav-item"><i class="fa-solid fa-building"></i> العملاء</button>
@@ -802,11 +803,41 @@
                             <select id="expense-category" class="w-full px-3 py-2 rounded-xl text-sm">
                                 <option value="بنزين / سولار">بنزين / سولار</option>
                                 <option value="كارتة طرق">كارتة طرق</option>
-                                <option value="إصلاحات">إصلاحات</option>
+                                <option value="صيانة">صيانة</option>
                                 <option value="إكراميات">إكراميات</option>
                                 <option value="مبيت ومأكل">مبيت ومأكل</option>
                                 <option value="أخرى">أخرى</option>
                             </select>
+                        </div>
+                        <div id="maintenance-fields" class="space-y-3 hidden">
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">نوع الصيانة</label>
+                                <select id="maintenance-type" class="w-full px-3 py-2 rounded-xl text-sm">
+                                    <option value="زيت/فلتر">زيت/فلتر</option>
+                                    <option value="إطارات">إطارات</option>
+                                    <option value="فرامل">فرامل</option>
+                                    <option value="فتيس/دبرياج">فتيس/دبرياج</option>
+                                    <option value="موتور">موتور</option>
+                                    <option value="كهرباء">كهرباء</option>
+                                    <option value="تكييف">تكييف</option>
+                                    <option value="سمكرة/دهان">سمكرة/دهان</option>
+                                    <option value="شاسيه">شاسيه</option>
+                                    <option value="دوري">دوري</option>
+                                    <option value="أخرى">أخرى</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">الورشة</label>
+                                <input type="text" id="maintenance-workshop" class="w-full px-3 py-2 rounded-xl text-sm" placeholder="اسم الورشة (اختياري)">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">قراءة العداد</label>
+                                <input type="number" id="maintenance-odometer" min="0" class="w-full px-3 py-2 rounded-xl text-sm font-mono" placeholder="كم (للمستقبل)">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">ملاحظات الصيانة</label>
+                                <input type="text" id="maintenance-notes" class="w-full px-3 py-2 rounded-xl text-sm" placeholder="ملاحظات (اختياري)">
+                            </div>
                         </div>
                         <div class="grid grid-cols-2 gap-4">
                             <div>
@@ -890,6 +921,51 @@
                             </thead>
                             <tbody id="table-fuel-transactions" class="divide-y divide-border">
                                 <tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ======================================== -->
+            <!-- 🔧 شاشة الصيانة (جديدة)                  -->
+            <!-- ======================================== -->
+            <section id="view-maintenance" class="view-section hidden space-y-6">
+                <div class="flex items-center justify-between border-b border-border pb-4">
+                    <div>
+                        <h2 class="text-2xl font-bold">سجل الصيانة</h2>
+                        <p class="text-xs text-muted mt-1">تتبع صيانة العربيات وتكاليفها</p>
+                    </div>
+                    <button id="btn-refresh-maintenance" class="bg-secondary hover:bg-hover px-4 py-2 rounded-xl text-sm border border-border transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
+                </div>
+                <div class="card rounded-2xl overflow-hidden">
+                    <div class="p-4 border-b border-border bg-secondary/30 flex items-center justify-between">
+                        <h3 class="text-sm font-bold"><i class="fa-solid fa-wrench ml-2 text-orange-500"></i>كل الصيانات</h3>
+                    </div>
+                    <div class="table-toolbar">
+                        <div class="search-wrap">
+                            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                            <input type="text" class="search-input" id="search-maintenance" placeholder="بحث في الصيانات...">
+                        </div>
+                        <select class="filter-select" id="filter-maintenance-vehicle">
+                            <option value="">كل العربيات</option>
+                        </select>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-right border-collapse text-sm">
+                            <thead class="bg-secondary/60 text-muted border-b border-border text-xs">
+                                <tr>
+                                    <th class="p-3">التاريخ</th>
+                                    <th class="p-3">العربية</th>
+                                    <th class="p-3">الرحلة</th>
+                                    <th class="p-3">نوع الصيانة</th>
+                                    <th class="p-3">التكلفة</th>
+                                    <th class="p-3">الورشة</th>
+                                    <th class="p-3">العداد</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-maintenance-body" class="divide-y divide-border">
+                                <tr><td colspan="7" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
                             </tbody>
                         </table>
                     </div>

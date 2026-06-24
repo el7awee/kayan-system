@@ -5,7 +5,7 @@
  */
 
 // ─── 1️⃣ الإعدادات والثوابت العالمية ───
-const BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbxjggtfRgYROtKnVfZ_58c17tQOszp1ubMgeqRu9C6KbYo_-BroPUzcoX6RuVhBW6go/exec";
+const BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbwDQ9OcY3hza8dXaN27JJ-xnLwO8BFinUvxhIDZwF2J56v9nQR0aw3FN1TVWzjZtA_y/exec";
 
 // حالة التطبيق المحلية
 const state = {
@@ -35,7 +35,8 @@ const state = {
         fuelTransactions: null,
         balanceTransactions: null,
         notifications: null,
-        users: null
+        users: null,
+        maintenance: null
     }
 };
 
@@ -140,6 +141,7 @@ function bindUIEvents() {
     });
     document.getElementById("nav-expenses")?.addEventListener("click", () => { switchView("view-expenses"); loadDropdowns(); });
     document.getElementById("nav-fuel")?.addEventListener("click", () => { switchView("view-fuel"); loadFuelData(); });
+    document.getElementById("nav-maintenance")?.addEventListener("click", () => { switchView("view-maintenance"); loadMaintenanceData(); });
     document.getElementById("nav-vehicles")?.addEventListener("click", () => { switchView("view-vehicles"); loadVehiclesData(); });
     document.getElementById("nav-drivers")?.addEventListener("click", () => { switchView("view-drivers"); loadDriversData(); });
     document.getElementById("nav-clients")?.addEventListener("click", () => { switchView("view-clients"); loadClientsData(); });
@@ -167,6 +169,7 @@ function bindUIEvents() {
     document.getElementById("btn-refresh-dashboard")?.addEventListener("click", refreshDashboard);
     document.getElementById("btn-refresh-trips")?.addEventListener("click", () => loadTripsData(true));
     document.getElementById("btn-refresh-fuel")?.addEventListener("click", loadFuelTransactions);
+    document.getElementById("btn-refresh-maintenance")?.addEventListener("click", () => loadMaintenanceData(true));
     document.getElementById("btn-refresh-vehicles")?.addEventListener("click", () => loadVehiclesData(true));
     document.getElementById("btn-refresh-drivers")?.addEventListener("click", () => loadDriversData(true));
     document.getElementById("btn-refresh-clients")?.addEventListener("click", () => loadClientsData(true));
@@ -673,7 +676,7 @@ window.editTrip = async function(tripId) {
 };
 
 // فئات المصروفات (نفس فئات شاشة المصروفات) — "بنزين / سولار" = جاز طريق (يحتاج لترات)
-const SETTLE_EXPENSE_CATEGORIES = ["بنزين / سولار", "كارتة طرق", "إصلاحات", "إكراميات", "مبيت ومأكل", "أخرى"];
+const SETTLE_EXPENSE_CATEGORIES = ["بنزين / سولار", "كارتة طرق", "صيانة", "إكراميات", "مبيت ومأكل", "أخرى"];
 const ROAD_FUEL_CATEGORY = "بنزين / سولار";
 
 // تصفية وإغلاق الرحلة (خطوة المحاسب): إدخال المصروفات + التصفية على عهدة السائق الفعلية
@@ -858,6 +861,13 @@ async function handleCreateTripSubmit(e) {
 }
 
 // ─── 5️⃣-و: المصروفات ───
+document.getElementById("expense-category")?.addEventListener("change", function() {
+  const mntFields = document.getElementById("maintenance-fields");
+  if (mntFields) {
+    mntFields.classList.toggle("hidden", this.value !== "صيانة");
+  }
+});
+
 async function handleAddExpenseSubmit(e) {
     e.preventDefault();
     const submitBtn = document.getElementById("btn-expense-submit");
@@ -874,6 +884,10 @@ async function handleAddExpenseSubmit(e) {
         Expense_Category: document.getElementById("expense-category")?.value || "",
         Amount: document.getElementById("expense-amount")?.value || 0,
         Fuel_Liters: document.getElementById("expense-fuel-liters")?.value || 0,
+        Maintenance_Type: document.getElementById("maintenance-type")?.value || "",
+        Workshop: document.getElementById("maintenance-workshop")?.value || "",
+        Odometer: document.getElementById("maintenance-odometer")?.value || "",
+        Maintenance_Notes: document.getElementById("maintenance-notes")?.value || "",
         bodyPayload: {
             Receipt_File_Base64: base64Payload,
             File_Name: fileNamePayload
@@ -1001,6 +1015,66 @@ function renderFuelTransactions(transactions) {
     reapplyTableFilter('table-fuel-transactions');
 }
 
+// ─── 5️⃣-ي: الصيانة ───
+async function loadMaintenanceData(forceRefresh = false) {
+    const tbody = document.getElementById("table-maintenance-body");
+    if (!tbody) return;
+
+    if (!forceRefresh && state.cache.maintenance) {
+        renderMaintenanceTable(state.cache.maintenance);
+        return;
+    }
+
+    tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>';
+
+    try {
+        const res = await callBackend("getMaintenance", { Limit: 100 });
+        const data = res?.data || [];
+        state.cache.maintenance = data;
+
+        // ملء فلتر العربيات
+        const filterEl = document.getElementById("filter-maintenance-vehicle");
+        const vehicleIds = [...new Set(data.map(r => r.vehicle_id).filter(Boolean))];
+        filterEl.innerHTML = '<option value="">كل العربيات</option>' +
+            vehicleIds.map(v => `<option value="${v}">${v}</option>`).join('');
+
+        renderMaintenanceTable(data);
+    } catch (err) {
+        handleStandardError(err);
+        tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-rose-400">فشل تحميل بيانات الصيانة.</td></tr>';
+    }
+}
+
+function renderMaintenanceTable(data) {
+    const tbody = document.getElementById("table-maintenance-body");
+    if (!tbody) return;
+
+    if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-muted"><i class="fa-solid fa-circle-check ml-2 text-emerald-400"></i>لا توجد صيانات مسجلة.</td></tr>';
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    data.forEach(r => {
+        const row = document.createElement("tr");
+        row.className = "table-row hover:bg-hover transition";
+        row.innerHTML = `
+            <td class="p-3 text-xs">${r.created_at ? new Date(r.created_at).toLocaleString('ar-EG') : '--'}</td>
+            <td class="p-3 text-xs font-medium">${r.vehicle_id || '--'}</td>
+            <td class="p-3 text-xs">${r.trip_id || '--'}</td>
+            <td class="p-3 text-xs"><span class="badge badge-open">${r.maintenance_type || '--'}</span></td>
+            <td class="p-3 text-xs text-rose-400 font-mono">${r.amount || 0} ج.م</td>
+            <td class="p-3 text-xs">${r.workshop || '--'}</td>
+            <td class="p-3 text-xs">${r.odometer || '--'}</td>
+        `;
+        fragment.appendChild(row);
+    });
+
+    tbody.innerHTML = "";
+    tbody.appendChild(fragment);
+    reapplyTableFilter('table-maintenance-body');
+}
+
 // ─── بناء بيانات شارت البنزينة (دائري حسب العربية) ───
 function buildFuelChartData(transactions) {
     let byVehicle = {};
@@ -1043,26 +1117,26 @@ function renderCharts(expensesData, fuelData) {
         if (chartExpenses) chartExpenses.destroy();
 
         // حساب المجموع لكل تصنيف من المصروفات الفعلية
-        const catMap = { 'جاز': 0, 'عهدة': 0, 'صيانة': 0 };
-        let شركة = 0; // باقي التصنيفات
+        let جاز = 0, صيانة = 0, شركة = 0;
         const expenses = expensesData?.expenses || [];
         for (const ex of expenses) {
             const cat = (ex.category || '').trim();
             const amt = parseFloat(ex.amount) || 0;
-            if (catMap.hasOwnProperty(cat)) {
-                catMap[cat] += amt;
+            if (cat === "بنزين / سولار") {
+                جاز += amt;
+            } else if (cat === "صيانة") {
+                صيانة += amt;
             } else {
                 شركة += amt;
             }
         }
 
-        const labels = ['الجاز', 'العهدة', 'الصيانة', 'شركة'];
-        const values = [catMap['جاز'], catMap['عهدة'], catMap['صيانة'], شركة];
+        const labels = ['الجاز', 'الصيانة', 'شركة'];
+        const values = [جاز, صيانة, شركة];
         const brandOrange = '#ff6b00';
         const bgColors = [
             'rgba(255,107,0,0.75)',
             'rgba(255,107,0,0.5)',
-            'rgba(255,107,0,0.35)',
             'rgba(255,107,0,0.2)',
         ];
 
@@ -2315,7 +2389,7 @@ function initTableSearch(searchId, filterId, tableBodyId) {
             const text = row.textContent.toLowerCase();
             const matchSearch = !q || text.includes(q);
             const matchFilter = !fv || text.includes(fv.toLowerCase());
-            row.style.display = (matchSearch && matchFilter) ? '' : '';
+            row.style.display = (matchSearch && matchFilter) ? '' : 'none';
         });
     };
 
@@ -2337,6 +2411,7 @@ function initAllTableSearch() {
     initTableSearch('search-fuel', 'filter-fuel-type', 'table-fuel-body');
     initTableSearch('search-fuel-page', 'filter-fuel-page-type', 'table-fuel-transactions');
     initTableSearch('search-balance', 'filter-balance-type', 'table-balance-body');
+    initTableSearch('search-maintenance', 'filter-maintenance-vehicle', 'table-maintenance-body');
 }
 
 // ─── 6️⃣ الدوال المساعدة ───

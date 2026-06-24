@@ -37,7 +37,10 @@ const ROLE_PERMISSIONS = {
     'getMyBalance', 'getUserBalance', 'getMyTransactions', 'getAllTransactions',
     'addBalance', 'deductBalance', 'transferBalance',
     // 🆕 تعديل الرحلات
-    'updateTrip'
+    'updateTrip',
+    // 🔧 الصيانة
+    'getMaintenance', 'getVehicleMaintenance', 'getTripMaintenance',
+    'updateMaintenance', 'deleteMaintenance'
   ],
   'Manager': [
     // القديمة
@@ -63,7 +66,10 @@ const ROLE_PERMISSIONS = {
     'getMyBalance', 'getUserBalance', 'getMyTransactions', 'getAllTransactions',
     'addBalance', 'deductBalance', 'transferBalance',
     // 🆕 تعديل الرحلات
-    'updateTrip'
+    'updateTrip',
+    // 🔧 الصيانة
+    'getMaintenance', 'getVehicleMaintenance', 'getTripMaintenance',
+    'updateMaintenance', 'deleteMaintenance'
   ],
   'Operations': [
     // الأوبريشن يفتح الرحلة فقط؛ التصفية والإغلاق من اختصاص المحاسب (settleTripFinancials)
@@ -83,7 +89,9 @@ const ROLE_PERMISSIONS = {
     // 🆕 العهدات (محدودة)
     'getMyBalance', 'getMyTransactions',
     // 🆕 تعديل الرحلات
-    'updateTrip'
+    'updateTrip',
+    // 🔧 الصيانة (قراءة فقط)
+    'getMaintenance', 'getVehicleMaintenance', 'getTripMaintenance'
   ],
   'Accountant': [
     // القديمة
@@ -106,7 +114,9 @@ const ROLE_PERMISSIONS = {
     'getClients',
     'getMonthlyExpenses',
     // 🆕 تعديل الرحلات
-    'updateTrip'
+    'updateTrip',
+    // 🔧 الصيانة
+    'getMaintenance', 'getVehicleMaintenance', 'getTripMaintenance'
   ]
 };
 
