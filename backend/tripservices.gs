@@ -39,6 +39,22 @@ function tripService_createTrip(e, userId) {
     throwBusinessError("BAD_REQUEST", "يرجى إدخال كمية الجاز المأخوذة.");
   }
   
+  // التحقق من أن السائق والعربية مش في رحلة مفتوحة
+  let tripsData = getCachedData("Trips_Log");
+  if (tripsData) {
+    for (let i = 1; i < tripsData.length; i++) {
+      if (tripsData[i][13] === true) continue;
+      if (tripsData[i][7] === "OPEN") {
+        if (tripsData[i][3] === driverId) {
+          throwBusinessError("DRIVER_BUSY", `السائق (${driverId}) في رحلة مفتوحة حالياً (${tripsData[i][0]}).`);
+        }
+        if (tripsData[i][4] === vehicleId) {
+          throwBusinessError("VEHICLE_BUSY", `العربية (${vehicleId}) في رحلة مفتوحة حالياً (${tripsData[i][0]}).`);
+        }
+      }
+    }
+  }
+  
   // ==========================================
   // ✅ الخطوة 1: التحقق المسبق من كفاية رصيد العهدة قبل أي كتابة
   //    (عشان منكتبش رحلة يتيمة لو الرصيد مش كفاية)

@@ -159,11 +159,11 @@ function bindUIEvents() {
 
     // كبس KPIs — ضغطة ع الكارت توديك لصفحته
     document.getElementById("card-active-trips")?.addEventListener("click", () => { switchView("view-trips"); loadTripsData(); });
-    document.getElementById("card-pending")?.addEventListener("click", () => { switchView("view-trips"); loadTripsData(); });
     document.getElementById("card-expenses")?.addEventListener("click", () => { switchView("view-expenses"); loadDropdowns(); });
     document.getElementById("card-fuel")?.addEventListener("click", () => { switchView("view-fuel"); loadFuelData(); });
-    document.getElementById("card-notifications")?.addEventListener("click", () => { switchView("view-notifications"); loadNotificationsData(); });
     document.getElementById("card-balance")?.addEventListener("click", () => { switchView("view-balance"); loadBalanceData(); });
+    document.getElementById("card-vehicles")?.addEventListener("click", () => { switchView("view-vehicles"); loadVehiclesData(); });
+    document.getElementById("card-drivers")?.addEventListener("click", () => { switchView("view-drivers"); loadDriversData(); });
 
     // أزرار التحديث
     document.getElementById("btn-refresh-dashboard")?.addEventListener("click", refreshDashboard);
@@ -397,9 +397,7 @@ async function refreshDashboard() {
         if (tripsRes?.data) {
             const trips = tripsRes.data;
             const activeCount = trips.filter(t => t[7] === "OPEN").length;
-            const closedCount = trips.filter(t => t[7] === "CLOSED").length;
             animateCounter(document.getElementById("stat-active-trips"), activeCount);
-            animateCounter(document.getElementById("stat-pending-settlements"), closedCount);
             state.cache.trips = trips;
             state.activeTrips = trips;
         }
@@ -417,23 +415,41 @@ async function refreshDashboard() {
             state.myBalance = myBalance;
         }
 
-        if (notifRes?.data) {
-            const unreadCount = notifRes.data.unread_count || 0;
-            const notifications = notifRes.data.notifications || [];
-            animateCounter(document.getElementById("stat-notifications"), unreadCount);
-            state.cache.notifications = notifications;
-            
-            // تحديث جرس التنبيهات في الهيدر
-            const bellBadge = document.getElementById("bell-badge");
-            const notifBadge = document.getElementById("notif-badge");
-            if (unreadCount > 0) {
-                if (bellBadge) { bellBadge.innerText = unreadCount; bellBadge.classList.remove("hidden"); }
-                if (notifBadge) { notifBadge.innerText = unreadCount; notifBadge.classList.remove("hidden"); }
-            } else {
-                if (bellBadge) bellBadge.classList.add("hidden");
-                if (notifBadge) notifBadge.classList.add("hidden");
-            }
+        // تحديث جرس التنبيهات في الهيدر
+        const unreadCount = notifRes?.data?.unread_count || 0;
+        state.cache.notifications = notifRes?.data?.notifications || [];
+        const bellBadge = document.getElementById("bell-badge");
+        const notifBadge = document.getElementById("notif-badge");
+        if (unreadCount > 0) {
+            if (bellBadge) { bellBadge.innerText = unreadCount; bellBadge.classList.remove("hidden"); }
+            if (notifBadge) { notifBadge.innerText = unreadCount; notifBadge.classList.remove("hidden"); }
+        } else {
+            if (bellBadge) bellBadge.classList.add("hidden");
+            if (notifBadge) notifBadge.classList.add("hidden");
         }
+
+        // حساب إحصائيات العربيات والسائقين
+        const trips = tripsRes?.data || [];
+        const busyVehicleIds = new Set(trips.filter(t => t[7] === "OPEN").map(t => t[4]).filter(Boolean));
+        const busyDriverIds = new Set(trips.filter(t => t[7] === "OPEN").map(t => t[3]).filter(Boolean));
+
+        try {
+            const vehRes = await callBackend("getVehicles");
+            const vehicles = vehRes?.data || [];
+            const totalVeh = vehicles.length;
+            const busyVeh = busyVehicleIds.size;
+            document.getElementById("stat-vehicles").innerText = `${totalVeh - busyVeh} / ${busyVeh}`;
+            state.cache.vehicles = vehicles;
+        } catch (e) { /* ignore */ }
+
+        try {
+            const drvRes = await callBackend("getDriversList");
+            const drivers = drvRes?.data || [];
+            const totalDrv = drivers.length;
+            const busyDrv = busyDriverIds.size;
+            document.getElementById("stat-drivers").innerText = `${totalDrv - busyDrv} / ${busyDrv}`;
+            state.cache.drivers = drivers;
+        } catch (e) { /* ignore */ }
 
         if (expensesRes?.data) {
             const monthlyTotal = expensesRes.data.total || 0;
@@ -488,6 +504,20 @@ async function loadDropdowns(forceRefresh = false) {
             state.cache.clients = clientsRes.data;
         }
 
+        // تحديد السائقين والعربيات المشغولين (في رحلة مفتوحة)
+        let busyDriverIds = new Set();
+        let busyVehicleIds = new Set();
+        try {
+            const tripsRes = await callBackend("getTrips", { Limit: 200 });
+            const trips = tripsRes?.data || [];
+            trips.forEach(t => {
+                if (t[7] === "OPEN") {
+                    if (t[3]) busyDriverIds.add(t[3]);
+                    if (t[4]) busyVehicleIds.add(t[4]);
+                }
+            });
+        } catch (e) { /* ignore */ }
+
         if (driversRes?.data) {
             state.cache.drivers = driversRes.data;
             const select = document.getElementById("trip-driver-id");
@@ -496,7 +526,9 @@ async function loadDropdowns(forceRefresh = false) {
                 driversRes.data.forEach(driver => {
                     const opt = document.createElement("option");
                     opt.value = driver.driver_id;
-                    opt.textContent = driver.full_name + (driver.current_advance > 0 ? ` (عهدة: ${driver.current_advance})` : "");
+                    const isBusy = busyDriverIds.has(driver.driver_id);
+                    opt.textContent = driver.full_name + (isBusy ? ' (❌ مشغول)' : '') + (driver.current_advance > 0 ? ` (عهدة: ${driver.current_advance})` : "");
+                    if (isBusy) opt.disabled = true;
                     select.appendChild(opt);
                 });
             }
@@ -514,19 +546,28 @@ async function loadDropdowns(forceRefresh = false) {
 
         if (vehiclesRes?.data) {
             state.cache.vehicles = vehiclesRes.data;
-            const selects = ["trip-vehicle-id", "expense-vehicle-id"];
-            selects.forEach(id => {
-                const select = document.getElementById(id);
-                if (select) {
-                    select.innerHTML = '<option value="">-- اختر --</option>';
-                    vehiclesRes.data.forEach(vehicle => {
-                        const opt = document.createElement("option");
-                        opt.value = vehicle.vehicle_id;
-                        opt.textContent = vehicle.plate_number + " (" + vehicle.model + ")";
-                        select.appendChild(opt);
-                    });
-                }
-            });
+            const tripSelect = document.getElementById("trip-vehicle-id");
+            if (tripSelect) {
+                tripSelect.innerHTML = '<option value="">-- اختر --</option>';
+                vehiclesRes.data.forEach(vehicle => {
+                    const opt = document.createElement("option");
+                    opt.value = vehicle.vehicle_id;
+                    const isBusy = busyVehicleIds.has(vehicle.vehicle_id);
+                    opt.textContent = vehicle.plate_number + " (" + vehicle.model + ")" + (isBusy ? ' (❌ مشغول)' : '');
+                    if (isBusy) opt.disabled = true;
+                    tripSelect.appendChild(opt);
+                });
+            }
+            const expenseSelect = document.getElementById("expense-vehicle-id");
+            if (expenseSelect) {
+                expenseSelect.innerHTML = '<option value="">-- اختر --</option>';
+                vehiclesRes.data.forEach(vehicle => {
+                    const opt = document.createElement("option");
+                    opt.value = vehicle.vehicle_id;
+                    opt.textContent = vehicle.plate_number + " (" + vehicle.model + ")";
+                    expenseSelect.appendChild(opt);
+                });
+            }
         }
 
         if (fuelRes?.data) {
@@ -2408,7 +2449,6 @@ function initAllTableSearch() {
     initTableSearch('search-vehicles', null, 'table-vehicles-body');
     initTableSearch('search-drivers', null, 'table-drivers-body');
     initTableSearch('search-clients', null, 'table-clients-body');
-    initTableSearch('search-fuel', 'filter-fuel-type', 'table-fuel-body');
     initTableSearch('search-fuel-page', 'filter-fuel-page-type', 'table-fuel-transactions');
     initTableSearch('search-balance', 'filter-balance-type', 'table-balance-body');
     initTableSearch('search-maintenance', 'filter-maintenance-vehicle', 'table-maintenance-body');
