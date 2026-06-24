@@ -135,12 +135,12 @@ function initApp() {
 let autoRefreshTimer = null;
 function startAutoRefresh() {
     stopAutoRefresh();
-    autoRefreshTimer = setInterval(() => {
-        const curView = document.querySelector(".view-section:not(.hidden)");
-        if (curView && curView.id === "view-dashboard") {
-            refreshDashboard();
-        }
-    }, 30000);
+        autoRefreshTimer = setInterval(() => {
+            const curView = document.querySelector(".view-section:not(.hidden)");
+            if (curView && curView.id === "view-dashboard") {
+                refreshDashboard(false);
+            }
+        }, 30000);
 }
 function stopAutoRefresh() {
     if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
@@ -191,7 +191,7 @@ function bindUIEvents() {
     document.getElementById("card-drivers")?.addEventListener("click", () => { switchView("view-drivers"); loadDriversData(); });
 
     // أزرار التحديث
-    document.getElementById("btn-refresh-dashboard")?.addEventListener("click", refreshDashboard);
+    document.getElementById("btn-refresh-dashboard")?.addEventListener("click", () => refreshDashboard(true));
     document.getElementById("btn-refresh-trips")?.addEventListener("click", () => loadTripsData(true));
     document.getElementById("btn-refresh-fuel-data")?.addEventListener("click", loadFuelData);
     document.getElementById("btn-refresh-maintenance")?.addEventListener("click", () => loadMaintenanceData(true));
@@ -280,7 +280,43 @@ function updateSidebarActiveState(viewId) {
 }
 
 // ─── 4️⃣ طبقة الاتصال بالخادم (معدلة) ───
+// ─── كاش للاستعلامات المتكررة ───
+const apiCache = new Map();
+const CACHE_TTL = {
+    getDashboard: 15000,    // 15 ثانية
+    getTrips: 20000,
+    getVehicles: 30000,
+    getDriversList: 30000,
+    getFuelBalance: 15000,
+    getFuelTransactions: 20000,
+    getFuelAnalytics: 30000,
+    getMonthlyExpenses: 30000,
+    getNotifications: 10000,
+    getMyBalance: 15000,
+    getLookups: 60000,
+    default: 10000
+};
+function getCachedResponse(action, params) {
+    const key = action + JSON.stringify(params || {});
+    const entry = apiCache.get(key);
+    if (entry && Date.now() - entry.ts < (CACHE_TTL[action] || CACHE_TTL.default)) {
+        return entry.data;
+    }
+    return null;
+}
+function setCachedResponse(action, params, data) {
+    const key = action + JSON.stringify(params || {});
+    apiCache.set(key, { data, ts: Date.now() });
+}
+
 async function callBackend(action, parameters = {}) {
+    // للقراءة فقط — نشوف الكاش الأول
+    const isReadAction = !["login", "createTrip", "updateTrip", "updateTripStatus", "settleTripFinancials", "addExpense", "createUser", "toggleUserStatus", "updateUserRole", "deleteUser", "resetUserPassword", "createVehicle", "updateVehicle", "deleteVehicle", "createDriver", "updateDriverData", "deleteDriver", "createClient", "updateClient", "deleteClient", "addFuelBalance", "updateFuelPrice", "updateMaintenance", "deleteMaintenance", "markNotificationRead", "markAllNotificationsRead", "deleteNotification", "addBalance", "deductBalance", "transferBalance"].includes(action);
+    if (isReadAction && !parameters._force) {
+        const cached = getCachedResponse(action, parameters);
+        if (cached) return cached;
+    }
+
     let url = new URL(BACKEND_API_URL);
     
     // ✅ إزالة action من الـ URL
@@ -345,6 +381,8 @@ async function callBackend(action, parameters = {}) {
     if (responseData.success === false) {
         throw new Error(JSON.stringify(responseData));
     }
+    // خزن في الكاش للقراءة فقط
+    if (isReadAction) setCachedResponse(action, parameters, responseData);
     return responseData;
 }
 
@@ -405,14 +443,14 @@ async function handleLoginSubmit(e) {
 }
 
 // ─── 5️⃣-ب: لوحة التحكم ───
-async function refreshDashboard() {
+async function refreshDashboard(forceRefresh = false) {
     try {
         // Update timestamp
         const now = new Date();
         document.getElementById("dash-last-update").innerText = now.toLocaleString('ar-EG');
 
         // طلب واحد مجمّع بدل 5 طلبات منفصلة (تحسين السرعة)
-        const dash = await callBackend("getDashboard", { Limit: 20 });
+        const dash = await callBackend("getDashboard", { Limit: 20, _force: forceRefresh });
         const d = dash?.data || {};
         const tripsRes = { data: d.trips };
         const fuelRes = { data: d.fuel };
