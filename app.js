@@ -5,7 +5,7 @@
  */
 
 // ─── 1️⃣ الإعدادات والثوابت العالمية ───
-const BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbwxu8DMstKsQ9f3ntENEG8nH5WpZlaGijIkJLUg56SEMw8vifW_XeTKA_XlH203HX4/exec";
+const BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbxhouw4rjCj__sj-lyvSEn1AZVPR00QOACayTZRhc1KQMB35OdO9Evk_5wNkLsPynV4/exec";
 
 // حالة التطبيق المحلية
 const state = {
@@ -110,7 +110,7 @@ function bindUIEvents() {
         await loadDropdowns();
         loadTripsData();
     });
-    document.getElementById("nav-expenses")?.addEventListener("click", () => { switchView("view-expenses"); loadDropdowns(); });
+    document.getElementById("nav-expenses")?.addEventListener("click", () => { switchView("view-expenses"); loadExpensesData(); });
     document.getElementById("nav-fuel")?.addEventListener("click", () => { switchView("view-fuel"); loadFuelData(); });
     document.getElementById("nav-vehicles")?.addEventListener("click", () => { switchView("view-vehicles"); loadVehiclesData(); });
     document.getElementById("nav-drivers")?.addEventListener("click", () => { switchView("view-drivers"); loadDriversData(); });
@@ -168,11 +168,20 @@ function bindUIEvents() {
     // النماذج
     document.getElementById("form-login")?.addEventListener("submit", handleLoginSubmit);
     document.getElementById("form-create-trip")?.addEventListener("submit", handleCreateTripSubmit);
-    document.getElementById("form-add-expense")?.addEventListener("submit", handleAddExpenseSubmit);
     document.getElementById("form-create-user")?.addEventListener("submit", handleCreateUserSubmit);
 
-    // رفع الملفات
+    // مصاريف الشركة
+    document.getElementById("btn-add-expense")?.addEventListener("click", () => document.getElementById("form-add-expense")?.scrollIntoView({ behavior: "smooth" }));
+    document.getElementById("btn-refresh-expenses")?.addEventListener("click", () => loadExpensesData(true));
+    document.getElementById("form-add-expense")?.addEventListener("submit", handleAddExpenseSubmit);
     document.getElementById("expense-file-input")?.addEventListener("change", handleFileProcessing);
+    document.getElementById("expense-search")?.addEventListener("input", () => { expensesState.page = 1; renderExpensesTable(); });
+    document.getElementById("expense-filter-from")?.addEventListener("change", () => { expensesState.page = 1; renderExpensesTable(); });
+    document.getElementById("expense-filter-to")?.addEventListener("change", () => { expensesState.page = 1; renderExpensesTable(); });
+    document.getElementById("expense-filter-type")?.addEventListener("change", () => { expensesState.page = 1; renderExpensesTable(); });
+    document.getElementById("btn-expenses-prev")?.addEventListener("click", () => { if (expensesState.page > 1) { expensesState.page--; renderExpensesTable(); } });
+    document.getElementById("btn-expenses-next")?.addEventListener("click", () => { expensesState.page++; renderExpensesTable(); });
+    document.getElementById("btn-export-expenses")?.addEventListener("click", exportExpensesToExcel);
 
     // 📊 التقارير
     document.getElementById("btn-generate-report")?.addEventListener("click", generateReport);
@@ -217,7 +226,7 @@ function bindBottomNav() {
         const navMap = {
             "view-dashboard": () => refreshDashboard(),
             "view-trips": () => { loadDropdowns(); loadTripsData(); },
-            "view-expenses": () => loadDropdowns(),
+            "view-expenses": () => loadExpensesData(),
             "view-fuel": () => loadFuelData(),
             "view-vehicles": () => loadVehiclesData(),
             "view-drivers": () => loadDriversData(),
@@ -555,33 +564,20 @@ async function loadDropdowns(forceRefresh = false) {
                     select.appendChild(opt);
                 });
             }
-            const expenseSelect = document.getElementById("expense-driver-id");
-            if (expenseSelect) {
-                expenseSelect.innerHTML = '<option value="">-- اختر --</option>';
-                driversRes.data.forEach(driver => {
-                    const opt = document.createElement("option");
-                    opt.value = driver.driver_id;
-                    opt.textContent = driver.full_name;
-                    expenseSelect.appendChild(opt);
-                });
-            }
         }
 
         if (vehiclesRes?.data) {
             state.cache.vehicles = vehiclesRes.data;
-            const selects = ["trip-vehicle-id", "expense-vehicle-id"];
-            selects.forEach(id => {
-                const select = document.getElementById(id);
-                if (select) {
-                    select.innerHTML = '<option value="">-- اختر --</option>';
-                    vehiclesRes.data.forEach(vehicle => {
-                        const opt = document.createElement("option");
-                        opt.value = vehicle.vehicle_id;
-                        opt.textContent = vehicle.plate_number + " (" + vehicle.model + ")";
-                        select.appendChild(opt);
-                    });
-                }
-            });
+            const select = document.getElementById("trip-vehicle-id");
+            if (select) {
+                select.innerHTML = '<option value="">-- اختر --</option>';
+                vehiclesRes.data.forEach(vehicle => {
+                    const opt = document.createElement("option");
+                    opt.value = vehicle.vehicle_id;
+                    opt.textContent = vehicle.plate_number + " (" + vehicle.model + ")";
+                    select.appendChild(opt);
+                });
+            }
         }
 
         if (fuelRes?.data) {
@@ -914,7 +910,7 @@ async function handleCreateTripSubmit(e) {
     }
 }
 
-// ─── 5️⃣-و: المصروفات ───
+// ─── 5️⃣-و: مصاريف الشركة ───
 async function handleAddExpenseSubmit(e) {
     e.preventDefault();
     const submitBtn = document.getElementById("btn-expense-submit");
@@ -925,17 +921,20 @@ async function handleAddExpenseSubmit(e) {
     const fileNamePayload = document.getElementById("expense-file-name")?.value || "";
 
     const params = {
-        Trip_ID: document.getElementById("expense-trip-id")?.value.trim() || "",
-        Driver_ID: document.getElementById("expense-driver-id")?.value || "",
-        Vehicle_ID: document.getElementById("expense-vehicle-id")?.value || "",
         Expense_Category: document.getElementById("expense-category")?.value || "",
         Amount: document.getElementById("expense-amount")?.value || 0,
-        Fuel_Liters: document.getElementById("expense-fuel-liters")?.value || 0,
+        Description: document.getElementById("expense-description")?.value?.trim() || "",
         bodyPayload: {
             Receipt_File_Base64: base64Payload,
             File_Name: fileNamePayload
         }
     };
+
+    if (!params.Expense_Category || parseFloat(params.Amount) <= 0) {
+        Swal.fire({ icon: 'warning', title: 'بيانات ناقصة', text: 'برجاء اختيار النوع وإدخال المبلغ.' });
+        setButtonLoading(submitBtn, false, '<i class="fa-solid fa-floppy-disk ml-1"></i> تسجيل المصروف');
+        return;
+    }
 
     try {
         await callBackend("addExpense", params);
@@ -943,31 +942,245 @@ async function handleAddExpenseSubmit(e) {
         document.getElementById("form-add-expense").reset();
         document.getElementById("expense-file-base64").value = "";
         document.getElementById("expense-file-name").value = "";
+        loadExpensesData(true);
         refreshDashboard();
     } catch (err) {
         handleStandardError(err);
     } finally {
-        setButtonLoading(submitBtn, false, '<i class="fa-solid fa-cloud-arrow-up ml-1"></i> حفظ المصروف');
+        setButtonLoading(submitBtn, false, '<i class="fa-solid fa-floppy-disk ml-1"></i> تسجيل المصروف');
     }
 }
+
+let expensesState = { data: [], filtered: [], page: 1, pageSize: 15 };
+
+async function loadExpensesData(forceRefresh = false) {
+    const tbody = document.getElementById("table-expenses-body");
+    if (!tbody) return;
+
+    tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
+
+    try {
+        const response = await callBackend("getExpenses", { Type: "COMPANY" });
+        expensesState.data = response.data || [];
+        expensesState.filtered = [...expensesState.data];
+        expensesState.page = 1;
+        renderExpensesTable();
+        updateExpensesSummary();
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-rose-500">فشل جلب البيانات</td></tr>`;
+        console.error("loadExpensesData Error:", err);
+    }
+}
+
+function renderExpensesTable() {
+    const tbody = document.getElementById("table-expenses-body");
+    if (!tbody) return;
+
+    const filtered = applyExpensesFilters();
+    expensesState.filtered = filtered;
+
+    const totalItems = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / expensesState.pageSize));
+    if (expensesState.page > totalPages) expensesState.page = totalPages;
+
+    const start = (expensesState.page - 1) * expensesState.pageSize;
+    const pageItems = filtered.slice(start, start + expensesState.pageSize);
+
+    document.getElementById("expenses-pagination-info").textContent = `${totalItems} مصروف`;
+    document.getElementById("expenses-pagination-page").textContent = `صفحة ${expensesState.page} من ${totalPages}`;
+    document.getElementById("btn-expenses-prev").disabled = expensesState.page <= 1;
+    document.getElementById("btn-expenses-next").disabled = expensesState.page >= totalPages;
+
+    if (pageItems.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-muted">لا توجد مصروفات</td></tr>`;
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    const userCache = state.cache?.users || [];
+
+    pageItems.forEach(ex => {
+        const row = document.createElement("tr");
+        row.className = "table-row hover:bg-hover transition";
+        const dateStr = ex.expense_date ? new Date(ex.expense_date).toLocaleDateString("ar-EG") : "--";
+        const userName = ex.created_by ? (userCache.find(u => u.user_id === ex.created_by)?.full_name || ex.created_by) : "--";
+        const receiptHtml = ex.receipt_file_id
+            ? `<a href="https://drive.google.com/file/d/${ex.receipt_file_id}/view" target="_blank" class="text-amber-400 text-xs"><i class="fa-solid fa-paperclip"></i></a>`
+            : `<span class="text-muted text-xs">—</span>`;
+        const actionBtns = `
+            <button onclick="editExpense('${ex.expense_id}')" class="px-2 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition"><i class="fa-solid fa-pen"></i></button>
+            <button onclick="deleteExpense('${ex.expense_id}')" class="px-2 py-1 text-xs bg-rose-500/20 text-rose-400 rounded-lg hover:bg-rose-500/30 transition"><i class="fa-solid fa-trash"></i></button>
+        `;
+        row.innerHTML = `
+            <td class="p-4" data-label="النوع">${esc(ex.category)}</td>
+            <td class="p-4 text-xs text-muted" data-label="البيان">${esc(ex.description || '—')}</td>
+            <td class="p-4 font-mono font-medium text-rose-400" data-label="القيمة">${(ex.amount || 0).toLocaleString()} ج.م</td>
+            <td class="p-4 text-center" data-label="الإيصال">${receiptHtml}</td>
+            <td class="p-4 text-xs" data-label="التاريخ">${dateStr}</td>
+            <td class="p-4 text-xs text-muted" data-label="بواسطة">${esc(userName)}</td>
+            <td class="p-4 text-center" data-label="">${actionBtns}</td>
+        `;
+        fragment.appendChild(row);
+    });
+
+    tbody.innerHTML = "";
+    tbody.appendChild(fragment);
+}
+
+function applyExpensesFilters() {
+    const search = (document.getElementById("expense-search")?.value || "").trim().toLowerCase();
+    const fromDate = document.getElementById("expense-filter-from")?.value;
+    const toDate = document.getElementById("expense-filter-to")?.value;
+    const typeFilter = document.getElementById("expense-filter-type")?.value || "";
+
+    return expensesState.data.filter(ex => {
+        if (typeFilter && ex.category !== typeFilter) return false;
+        if (search && !(ex.category?.toLowerCase().includes(search) || (ex.description || "").toLowerCase().includes(search))) return false;
+        if (fromDate && ex.expense_date && new Date(ex.expense_date) < new Date(fromDate)) return false;
+        if (toDate && ex.expense_date) {
+            const toEnd = new Date(toDate);
+            toEnd.setHours(23, 59, 59, 999);
+            if (new Date(ex.expense_date) > toEnd) return false;
+        }
+        return true;
+    });
+}
+
+function updateExpensesSummary() {
+    const now = new Date();
+    const thisMonth = now.getMonth();
+    const thisYear = now.getFullYear();
+
+    let monthTotal = 0, utilitiesTotal = 0, rentTotal = 0, otherTotal = 0;
+
+    (expensesState.data || []).forEach(ex => {
+        const d = ex.expense_date ? new Date(ex.expense_date) : null;
+        if (d && d.getMonth() === thisMonth && d.getFullYear() === thisYear) {
+            const amt = ex.amount || 0;
+            monthTotal += amt;
+            if (ex.category === "كهرباء" || ex.category === "مياه" || ex.category === "إنترنت") {
+                utilitiesTotal += amt;
+            } else if (ex.category === "إيجار") {
+                rentTotal += amt;
+            } else {
+                otherTotal += amt;
+            }
+        }
+    });
+
+    document.getElementById("expenses-month-total").innerText = monthTotal.toFixed(2) + " ج.م";
+    document.getElementById("expenses-utilities-total").innerText = utilitiesTotal.toFixed(2) + " ج.م";
+    document.getElementById("expenses-rent-total").innerText = rentTotal.toFixed(2) + " ج.م";
+    document.getElementById("expenses-other-total").innerText = otherTotal.toFixed(2) + " ج.م";
+}
+
+window.editExpense = async function(expenseId) {
+    const ex = expensesState.data.find(e => e.expense_id === expenseId);
+    if (!ex) return;
+
+    const { value: formValues } = await Swal.fire({
+        title: 'تعديل المصروف',
+        html: `
+            <div class="text-right">
+                <label class="block text-sm font-medium mb-1 mt-2">نوع المصروف</label>
+                <select id="edit-expense-category" class="swal2-input w-full">
+                    <option value="كهرباء" ${ex.category === 'كهرباء' ? 'selected' : ''}>🔌 كهرباء</option>
+                    <option value="مياه" ${ex.category === 'مياه' ? 'selected' : ''}>💧 مياه</option>
+                    <option value="غاز" ${ex.category === 'غاز' ? 'selected' : ''}>🔥 غاز</option>
+                    <option value="إيجار" ${ex.category === 'إيجار' ? 'selected' : ''}>🏠 إيجار</option>
+                    <option value="اتصالات" ${ex.category === 'اتصالات' ? 'selected' : ''}>📞 اتصالات</option>
+                    <option value="إنترنت" ${ex.category === 'إنترنت' ? 'selected' : ''}>🌐 إنترنت</option>
+                    <option value="صيانة" ${ex.category === 'صيانة' ? 'selected' : ''}>🔧 صيانة</option>
+                    <option value="رواتب" ${ex.category === 'رواتب' ? 'selected' : ''}>💰 رواتب</option>
+                    <option value="إيجار معدات" ${ex.category === 'إيجار معدات' ? 'selected' : ''}>🚜 إيجار معدات</option>
+                    <option value="أخرى" ${ex.category === 'أخرى' ? 'selected' : ''}>📦 أخرى</option>
+                </select>
+                <label class="block text-sm font-medium mb-1 mt-2">البيان</label>
+                <input id="edit-expense-description" class="swal2-input w-full" value="${esc(ex.description || '')}">
+                <label class="block text-sm font-medium mb-1 mt-2">القيمة (ج.م)</label>
+                <input id="edit-expense-amount" class="swal2-input w-full" type="number" value="${ex.amount || 0}">
+            </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'حفظ',
+        cancelButtonText: 'إلغاء',
+        preConfirm: () => ({
+            Expense_ID: expenseId,
+            Expense_Category: document.getElementById('edit-expense-category').value,
+            Description: document.getElementById('edit-expense-description').value,
+            Amount: parseFloat(document.getElementById('edit-expense-amount').value) || 0
+        })
+    });
+
+    if (formValues && formValues.Amount > 0) {
+        try {
+            await callBackend("updateExpense", formValues);
+            Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
+            loadExpensesData(true);
+        } catch (err) {
+            handleStandardError(err);
+        }
+    }
+};
+
+window.deleteExpense = async function(expenseId) {
+    const result = await Swal.fire({
+        title: 'حذف المصروف؟',
+        text: 'هل أنت متأكد من حذف هذا المصروف؟',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'حذف',
+        cancelButtonText: 'إلغاء',
+        confirmButtonColor: '#e11d48'
+    });
+
+    if (result.isConfirmed) {
+        try {
+            await callBackend("deleteExpense", { Expense_ID: expenseId });
+            Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
+            loadExpensesData(true);
+            refreshDashboard();
+        } catch (err) {
+            handleStandardError(err);
+        }
+    }
+};
 
 function handleFileProcessing(e) {
     const file = e.target.files[0];
     if (!file) return;
-
     if (file.size > 4 * 1024 * 1024) {
         Swal.fire({ icon: 'error', title: 'حجم الملف ضخم', text: 'الرجاء رفع ملف أقل من 4 ميجابايت.' });
         e.target.value = "";
         return;
     }
-
     const reader = new FileReader();
     reader.onload = function(event) {
-        const rawBase64 = event.target.result.split(',')[1];
-        document.getElementById("expense-file-base64").value = rawBase64;
+        document.getElementById("expense-file-base64").value = event.target.result.split(',')[1];
         document.getElementById("expense-file-name").value = `Receipt_${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
     };
     reader.readAsDataURL(file);
+}
+
+function exportExpensesToExcel() {
+    const data = expensesState.filtered || [];
+    if (data.length === 0) {
+        Swal.fire({ icon: 'info', title: 'لا توجد بيانات', text: 'لا توجد مصروفات للتصدير.' });
+        return;
+    }
+    let csv = "النوع,البيان,القيمة,التاريخ,بواسطة\n";
+    data.forEach(ex => {
+        const dateStr = ex.expense_date ? new Date(ex.expense_date).toLocaleDateString("ar-EG") : "--";
+        const desc = (ex.description || "").replace(/,/g, " ");
+        csv += `${ex.category},${desc},${ex.amount || 0},${dateStr},${ex.created_by || ""}\n`;
+    });
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `مصاريف_الشركة_${new Date().toISOString().slice(0,10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
 }
 
 // ─── 5️⃣-ز: البنزينة ───

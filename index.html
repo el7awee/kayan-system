@@ -663,63 +663,128 @@
             </section>
 
             <!-- ======================================== -->
-            <!-- 💰 شاشة المصروفات                        -->
+            <!-- 💰 شاشة مصاريف الشركة                     -->
             <!-- ======================================== -->
             <section id="view-expenses" class="view-section hidden space-y-6">
-                <div class="max-w-2xl mx-auto card p-6 rounded-2xl space-y-5">
-                    <div class="border-b border-border pb-3">
-                        <h3 class="text-lg font-bold"><i class="fa-solid fa-file-invoice-dollar text-rose-500 ml-2"></i>تسجيل مصروف</h3>
+                <div class="flex items-center justify-between border-b border-border pb-4">
+                    <div>
+                        <h2 class="text-2xl font-bold">إدارة المصروفات</h2>
+                        <p class="text-xs text-muted mt-1">تسجيل وفلترة ومراجعة كل المصروفات</p>
                     </div>
+                    <div class="flex gap-2">
+                        <button id="btn-export-expenses" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-file-excel ml-1 text-emerald-400"></i> Excel</button>
+                        <button id="btn-refresh-expenses" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div class="card p-4 rounded-2xl text-center">
+                        <p class="text-xs text-muted">إجمالي الشهر</p>
+                        <h3 id="expenses-month-total" class="text-xl font-bold mt-1 text-rose-400">0 ج.م</h3>
+                    </div>
+                    <div class="card p-4 rounded-2xl text-center">
+                        <p class="text-xs text-muted">مرافق (كهرباء + مياه + نت)</p>
+                        <h3 id="expenses-utilities-total" class="text-xl font-bold mt-1 text-amber-400">0 ج.م</h3>
+                    </div>
+                    <div class="card p-4 rounded-2xl text-center">
+                        <p class="text-xs text-muted">إيجار</p>
+                        <h3 id="expenses-rent-total" class="text-xl font-bold mt-1 text-blue-400">0 ج.م</h3>
+                    </div>
+                    <div class="card p-4 rounded-2xl text-center">
+                        <p class="text-xs text-muted">باقي المصروفات</p>
+                        <h3 id="expenses-other-total" class="text-xl font-bold mt-1 text-emerald-400">0 ج.م</h3>
+                    </div>
+                </div>
+                <div class="card p-5 rounded-2xl space-y-4">
+                    <h3 class="text-base font-bold"><i class="fa-solid fa-circle-plus text-amber-500 ml-2"></i>تسجيل مصروف جديد</h3>
                     <form id="form-add-expense" class="space-y-4">
-                        <div>
-                            <label class="block text-xs font-medium text-muted mb-1">رقم الرحلة</label>
-                            <input type="text" id="expense-trip-id" required class="w-full px-3 py-2 rounded-xl text-sm" placeholder="TRP-YYYYMMDD-XXXX">
-                        </div>
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div>
-                                <label class="block text-xs font-medium text-muted mb-1">السائق</label>
-                                <select id="expense-driver-id" class="w-full px-3 py-2 rounded-xl text-sm">
-                                    <option value="">-- اختر --</option>
+                                <label class="block text-xs font-medium text-muted mb-1">نوع المصروف</label>
+                                <select id="expense-category" required class="w-full px-3 py-2 rounded-xl text-sm">
+                                    <option value="كهرباء">🔌 كهرباء</option>
+                                    <option value="مياه">💧 مياه</option>
+                                    <option value="غاز">🔥 غاز</option>
+                                    <option value="إيجار">🏠 إيجار</option>
+                                    <option value="اتصالات">📞 اتصالات</option>
+                                    <option value="إنترنت">🌐 إنترنت</option>
+                                    <option value="صيانة">🔧 صيانة</option>
+                                    <option value="رواتب">💰 رواتب</option>
+                                    <option value="إيجار معدات">🚜 إيجار معدات</option>
+                                    <option value="أخرى">📦 أخرى</option>
                                 </select>
                             </div>
-                            <div>
-                                <label class="block text-xs font-medium text-muted mb-1">العربية</label>
-                                <select id="expense-vehicle-id" class="w-full px-3 py-2 rounded-xl text-sm">
-                                    <option value="">-- اختر --</option>
-                                </select>
+                            <div class="md:col-span-2">
+                                <label class="block text-xs font-medium text-muted mb-1">البيان — إيه صرفت فيه؟</label>
+                                <textarea id="expense-description" rows="1" class="w-full px-3 py-2 rounded-xl text-sm" placeholder="مثال: فاتورة كهرباء شهر يونيو"></textarea>
                             </div>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-muted mb-1">بند المصروف</label>
-                            <select id="expense-category" class="w-full px-3 py-2 rounded-xl text-sm">
-                                <option value="بنزين / سولار">بنزين / سولار</option>
-                                <option value="كارتة طرق">كارتة طرق</option>
-                                <option value="إصلاحات">إصلاحات</option>
-                                <option value="إكراميات">إكراميات</option>
-                                <option value="مبيت ومأكل">مبيت ومأكل</option>
-                                <option value="أخرى">أخرى</option>
-                            </select>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-xs font-medium text-muted mb-1">القيمة (ج.م)</label>
                                 <input type="number" id="expense-amount" required min="0.5" step="0.5" class="w-full px-3 py-2 rounded-xl text-sm font-mono" placeholder="0.00">
                             </div>
-                            <div>
-                                <label class="block text-xs font-medium text-muted mb-1">لترات (للبنزين)</label>
-                                <input type="number" id="expense-fuel-liters" min="0" step="0.1" class="w-full px-3 py-2 rounded-xl text-sm font-mono" placeholder="0.0">
-                            </div>
                         </div>
-                        <div>
-                            <label class="block text-xs font-medium text-muted mb-1">إيصال</label>
-                            <input type="file" id="expense-file-input" accept="image/*,application/pdf" class="w-full text-xs file:ml-4 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-secondary file:text-primary hover:file:bg-hover transition cursor-pointer">
+                        <div class="flex items-end gap-4 flex-wrap">
+                            <div class="flex-1 min-w-[200px]">
+                                <label class="block text-xs font-medium text-muted mb-1">صورة الإيصال</label>
+                                <input type="file" id="expense-file-input" accept="image/*,application/pdf" class="w-full text-xs file:ml-4 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-secondary file:text-primary hover:file:bg-hover transition cursor-pointer">
+                            </div>
+                            <button type="submit" id="btn-expense-submit" class="py-2.5 px-6 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-sm transition whitespace-nowrap">
+                                <i class="fa-solid fa-floppy-disk ml-1"></i> تسجيل المصروف
+                            </button>
                         </div>
                         <input type="hidden" id="expense-file-base64">
                         <input type="hidden" id="expense-file-name">
-                        <button type="submit" id="btn-expense-submit" class="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-sm transition">
-                            <i class="fa-solid fa-cloud-arrow-up ml-1"></i> حفظ المصروف
-                        </button>
                     </form>
+                </div>
+                <div class="card rounded-2xl overflow-hidden">
+                    <div class="p-4 border-b border-border bg-secondary/30 space-y-3">
+                        <div class="flex flex-wrap gap-3 items-center">
+                            <div class="relative flex-1 min-w-[200px]">
+                                <i class="fa-solid fa-search absolute right-3 top-1/2 -translate-y-1/2 text-muted text-xs"></i>
+                                <input type="text" id="expense-search" class="w-full pr-8 pl-3 py-2 rounded-xl text-sm bg-input border border-input-border" placeholder="بحث في المصروفات...">
+                            </div>
+                            <input type="date" id="expense-filter-from" class="px-3 py-2 rounded-xl text-sm bg-input border border-input-border" title="من تاريخ">
+                            <input type="date" id="expense-filter-to" class="px-3 py-2 rounded-xl text-sm bg-input border border-input-border" title="إلى تاريخ">
+                            <select id="expense-filter-type" class="px-3 py-2 rounded-xl text-sm bg-input border border-input-border">
+                                <option value="">كل الأنواع</option>
+                                <option value="كهرباء">🔌 كهرباء</option>
+                                <option value="مياه">💧 مياه</option>
+                                <option value="غاز">🔥 غاز</option>
+                                <option value="إيجار">🏠 إيجار</option>
+                                <option value="اتصالات">📞 اتصالات</option>
+                                <option value="إنترنت">🌐 إنترنت</option>
+                                <option value="صيانة">🔧 صيانة</option>
+                                <option value="رواتب">💰 رواتب</option>
+                                <option value="إيجار معدات">🚜 إيجار معدات</option>
+                                <option value="أخرى">📦 أخرى</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-right border-collapse text-sm">
+                            <thead class="bg-secondary/60 text-muted border-b border-border text-xs">
+                                <tr>
+                                    <th class="p-4">النوع</th>
+                                    <th class="p-4">البيان</th>
+                                    <th class="p-4">القيمة</th>
+                                    <th class="p-4">الإيصال</th>
+                                    <th class="p-4">التاريخ</th>
+                                    <th class="p-4">بواسطة</th>
+                                    <th class="p-4 text-center">إجراءات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-expenses-body" class="divide-y divide-border">
+                                <tr><td colspan="7" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="p-4 border-t border-border flex items-center justify-between text-xs text-muted">
+                        <span id="expenses-pagination-info">0 مصروف</span>
+                        <div class="flex gap-2">
+                            <button id="btn-expenses-prev" class="px-3 py-1 rounded-lg bg-secondary hover:bg-hover disabled:opacity-30 transition" disabled><i class="fa-solid fa-chevron-right"></i></button>
+                            <span id="expenses-pagination-page" class="px-3 py-1">صفحة 1 من 1</span>
+                            <button id="btn-expenses-next" class="px-3 py-1 rounded-lg bg-secondary hover:bg-hover disabled:opacity-30 transition" disabled><i class="fa-solid fa-chevron-left"></i></button>
+                        </div>
+                    </div>
                 </div>
             </section>
 

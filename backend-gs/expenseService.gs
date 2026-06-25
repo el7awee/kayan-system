@@ -1,80 +1,34 @@
 /**
  * منظومة الكيان v6.0 - طبقة الخدمات المالية
- * ملف: expenseService.gs (إدارة المصروفات والرفع السحابي الثنائي)
- * [تحديث: دعم جاز الطريق والعهدة]
+ * ملف: expenseService.gs (إدارة مصاريف الشركة)
+ * [تحديث: مصاريف شركة عامة - كهرباء، مياه، غاز، إيجار، الخ]
  */
 
 // معرف المجلد الرئيسي لحفظ إيصالات المصروفات على Google Drive
 const EXPENSES_DRIVE_FOLDER_ID = "1NiRSLKcUnL2eFb0huo414h_BmZSnluXsq_GszYIxMMc";
 
 /**
- * 1. دالة إضافة مصروف مع إيصال (addExpense) - معدلة
+ * 1. دالة إضافة مصروف شركة (addExpense)
  */
 function expenseService_addExpense(e, userId) {
   let ss = getCachedSS();
   let sheet = getCachedSheet("Expenses_Log");
   if (!sheet) throwBusinessError("SYSTEM_ERROR", "شيت Expenses_Log غير موجود.");
   
-  let tripId = e.parameter.Trip_ID;
   let amount = parseFloat(e.parameter.Amount || "0");
-  let category = e.parameter.Expense_Category || "General";
-  
-  // دعم الـ IDs
-  let driverId = e.parameter.Driver_ID || "";
-  let vehicleId = e.parameter.Vehicle_ID || "";
-  
-  if (!tripId || amount <= 0) {
-    throwBusinessError("BAD_REQUEST", "بيانات المصروف غير صالحة، يجب تحديد رقم الرحلة والمبلغ بشكل صحيح.");
+  if (amount <= 0) {
+    throwBusinessError("BAD_REQUEST", "المبلغ غير صالح.");
   }
   
-  // ==========================================
-  // 🆕 إذا كان المصروف من نوع "بنزين / سولار" (جاز طريق)
-  // ==========================================
-  let isRoadFuel = (category === "بنزين / سولار" || category === "بنزين طريق" || category === "Road Fuel");
-  
-  if (isRoadFuel && tripId) {
-    let fuelLiters = parseFloat(e.parameter.Fuel_Liters || "0");
-    let fuelPrice = parseFloat(e.parameter.Fuel_Price || "0");
-    let fuelAmount = fuelLiters * fuelPrice;
-    
-    if (fuelLiters > 0) {
-      // تسجيل في Fuel_Transactions
-      logFuelTransaction({
-        vehicleId: vehicleId,
-        tripId: tripId,
-        amountLiters: fuelLiters,
-        amountEGP: fuelAmount,
-        fuelPrice: fuelPrice,
-        transactionType: 'ROAD',
-        source: 'DRIVER_ADVANCE',
-        createdBy: userId,
-        notes: `جاز طريق - ${category}`
-      });
-      
-      // تحديث إجمالي جاز الطريق في الرحلة
-      tripService_addRoadFuel(tripId, fuelLiters, fuelAmount, userId);
-    }
-  }
-  
-  // ==========================================
-  // 🆕 خصم المصروف من عهدة السائق
-  // ==========================================
-  if (driverId) {
-    // تحديث عهدة السائق (خصم)
-    driverService_updateDriverAdvance(driverId, -amount, userId, `مصروف: ${category} للرحلة ${tripId}`);
-    
-    // تحديث مصروفات العهدة في Trip_Advances
-    tripService_updateAdvanceSpent(tripId, amount, userId);
-  }
-  
-  // ملاحظة: جاز الطريق بيتدفع من عهدة السائق ومبيتخصمش من رصيد بنزينة الشركة.
-  // اللي بيتخصم من بنزينة الشركة هو بس لترات بداية الرحلة (في tripService_createTrip).
-  // هنا بنضيف لترات جاز الطريق على إجمالي لترات الرحلة (فوق) ونخصم قيمته من عهدة السائق (تحت).
+  let category = e.parameter.Expense_Category || "أخرى";
+  let description = e.parameter.Description || "";
+  let vendor = e.parameter.Vendor || "";
+  let expenseDate = e.parameter.Expense_Date || new Date().toISOString();
   
   // معالجة المرفق
   let receiptFileId = "";
   let base64Str = e.parameter.Receipt_File_Base64;
-  let fileName = e.parameter.File_Name || `Receipt_${tripId}_${Date.now()}`;
+  let fileName = e.parameter.File_Name || `Receipt_${Date.now()}`;
   
   if (base64Str && base64Str.trim() !== "") {
     receiptFileId = uploadBase64FileToDrive(base64Str, fileName);
@@ -82,35 +36,31 @@ function expenseService_addExpense(e, userId) {
   
   // توليد معرف فريد للمصروف
   let expenseId = `EXP-${Date.now()}-${Math.floor(Math.random() * 100)}`;
-  let nowStr = new Date().toISOString();
   
-  // الهيكل المعدل: استخدام IDs بدلاً من النصوص
   let newExpenseRow = [
     expenseId,                                    // A: Expense_ID
-    tripId,                                       // B: Trip_ID
-    driverId,                                     // C: Driver_ID
-    vehicleId,                                    // D: Vehicle_ID
+    "",                                           // B: Trip_ID (غير مستخدم لمصاريف الشركة)
+    "",                                           // C: Driver_ID
+    "",                                           // D: Vehicle_ID
     category,                                     // E: Expense_Category
     amount,                                       // F: Amount
     receiptFileId,                                // G: Receipt_File_ID
     userId,                                       // H: Created_By
-    nowStr,                                       // I: Created_At
+    expenseDate,                                  // I: Expense_Date
     1,                                            // J: Version_Number
     false,                                        // K: IsDeleted
-    isRoadFuel ? "ROAD_FUEL" : "REGULAR"          // L: Expense_Type
+    "COMPANY",                                    // L: Expense_Type
+    description,                                  // M: Description
+    vendor                                        // N: Vendor
   ];
   
   sheet.appendRow(newExpenseRow);
   
-  // تسجيل في Audit Log
   logApiAudit(userId, "User", "addExpense", 0, "N/A", 200);
   
   return {
     "success": true,
     "expense_id": expenseId,
-    "trip_id": tripId,
-    "receipt_drive_id": receiptFileId,
-    "is_road_fuel": isRoadFuel,
     "message": `تم تسجيل المصروف بقيمة (${amount} ج.م) بنجاح.`
   };
 }
@@ -150,7 +100,7 @@ function uploadBase64FileToDrive(base64Data, fileName) {
 }
 
 /**
- * 3. دالة جلب مصروفات رحلة محددة
+ * 3. دالة جلب مصروفات رحلة محددة (للمحاسبة)
  */
 function expenseService_getTripExpenses(ss, params) {
   let tripId = params.Trip_ID;
@@ -169,10 +119,8 @@ function expenseService_getTripExpenses(ss, params) {
       expenses.push({
         expense_id: data[i][0],
         trip_id: data[i][1],
-        driver_id: data[i][2],
-        vehicle_id: data[i][3],
         category: data[i][4],
-        amount: data[i][5],
+        amount: parseFloat(data[i][5]) || 0,
         receipt_file_id: data[i][6],
         created_by: data[i][7],
         created_at: data[i][8],
@@ -225,14 +173,15 @@ function expenseService_getMonthlyExpenses(ss) {
 }
 
 /**
- * 5. دالة جلب كل المصروفات مع فلترة
+ * 5. دالة جلب كل مصاريف الشركة مع فلترة
  */
 function expenseService_getExpenses(ss, params) {
   let data = getCachedData("Expenses_Log");
   if (!data) return { "success": false, "message": "شيت Expenses_Log غير موجود." };
   
   let categoryFilter = params.Category || "";
-  let limit = parseInt(params.Limit) || 100;
+  let typeFilter = params.Type || ""; // COMPANY, REGULAR, etc.
+  let limit = parseInt(params.Limit) || 200;
   let offset = parseInt(params.Offset) || 0;
   
   let results = [];
@@ -240,19 +189,18 @@ function expenseService_getExpenses(ss, params) {
     let row = data[i];
     if (row[10] === true || row[10] === "TRUE") continue;
     if (categoryFilter && row[4] !== categoryFilter) continue;
+    if (typeFilter && (row[11] || "REGULAR") !== typeFilter) continue;
     
     results.push({
       expense_id: row[0],
-      trip_id: row[1],
-      driver_id: row[2],
-      vehicle_id: row[3],
       category: row[4],
       amount: parseFloat(row[5]) || 0,
       receipt_file_id: row[6],
       created_by: row[7],
-      created_at: row[8],
+      expense_date: row[8],
       expense_type: row[11] || "REGULAR",
-      description: row[12] || ""
+      description: row[12] || "",
+      vendor: row[13] || ""
     });
   }
   
@@ -276,11 +224,10 @@ function expenseService_updateExpense(ss, e, userId) {
     if (data[i][0] === expenseId && data[i][10] !== true) {
       let row = i + 1;
       
-      let newAmount = e.parameter.Amount;
-      let newCategory = e.parameter.Expense_Category;
-      
-      if (newAmount) sheet.getRange(row, 6).setValue(parseFloat(newAmount));
-      if (newCategory) sheet.getRange(row, 5).setValue(newCategory);
+      if (e.parameter.Amount) sheet.getRange(row, 6).setValue(parseFloat(e.parameter.Amount));
+      if (e.parameter.Expense_Category) sheet.getRange(row, 5).setValue(e.parameter.Expense_Category);
+      if (e.parameter.Description !== undefined) sheet.getRange(row, 13).setValue(e.parameter.Description);
+      if (e.parameter.Vendor !== undefined) sheet.getRange(row, 14).setValue(e.parameter.Vendor);
       
       let ver = (parseInt(data[i][9]) || 0) + 1;
       sheet.getRange(row, 10).setValue(ver);
