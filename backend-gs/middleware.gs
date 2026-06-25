@@ -37,10 +37,19 @@ const ROLE_PERMISSIONS = {
     'getMyBalance', 'getUserBalance', 'getMyTransactions', 'getAllTransactions',
     'addBalance', 'deductBalance', 'transferBalance',
     // 🆕 تعديل الرحلات
-    'updateTrip',
+    'updateTrip', 'softDeleteTrip',
     // 📊 التقارير
     'getProfitLoss', 'getExpenseBreakdown', 'getFuelSummary',
-    'getDriverPerformance', 'getClientActivity', 'getMonthlyTrends', 'getVehicleUtilization'
+    'getDriverPerformance', 'getClientActivity', 'getMonthlyTrends', 'getVehicleUtilization',
+    // 🔧 الصيانة
+    'getMaintenance', 'getVehicleMaintenance', 'getTripMaintenance',
+    'updateMaintenance', 'deleteMaintenance',
+    // 🔐 الصلاحيات
+    'getPermissions', 'savePermissions',
+    // مصروفات عامة
+    'getExpenses', 'updateExpense', 'deleteExpense',
+    // تحليلات
+    'getFuelAnalytics'
   ],
   'Manager': [
     // القديمة
@@ -66,10 +75,19 @@ const ROLE_PERMISSIONS = {
     'getMyBalance', 'getUserBalance', 'getMyTransactions', 'getAllTransactions',
     'addBalance', 'deductBalance', 'transferBalance',
     // 🆕 تعديل الرحلات
-    'updateTrip',
+    'updateTrip', 'softDeleteTrip',
     // 📊 التقارير
     'getProfitLoss', 'getExpenseBreakdown', 'getFuelSummary',
-    'getDriverPerformance', 'getClientActivity', 'getMonthlyTrends', 'getVehicleUtilization'
+    'getDriverPerformance', 'getClientActivity', 'getMonthlyTrends', 'getVehicleUtilization',
+    // 🔧 الصيانة
+    'getMaintenance', 'getVehicleMaintenance', 'getTripMaintenance',
+    'updateMaintenance', 'deleteMaintenance',
+    // 🔐 الصلاحيات
+    'getPermissions', 'savePermissions',
+    // مصروفات عامة
+    'getExpenses', 'updateExpense', 'deleteExpense',
+    // تحليلات
+    'getFuelAnalytics'
   ],
   'Operations': [
     // الأوبريشن يفتح الرحلة فقط؛ التصفية والإغلاق من اختصاص المحاسب (settleTripFinancials)
@@ -92,7 +110,13 @@ const ROLE_PERMISSIONS = {
     'updateTrip',
     // 📊 التقارير (قراءة فقط)
     'getProfitLoss', 'getExpenseBreakdown',
-    'getMonthlyTrends', 'getVehicleUtilization'
+    'getMonthlyTrends', 'getVehicleUtilization',
+    // 🔧 الصيانة (قراءة فقط)
+    'getMaintenance', 'getVehicleMaintenance', 'getTripMaintenance',
+    // مصروفات عامة (قراءة فقط)
+    'getExpenses',
+    // تحليلات (قراءة فقط)
+    'getFuelAnalytics'
   ],
   'Accountant': [
     // القديمة
@@ -118,7 +142,13 @@ const ROLE_PERMISSIONS = {
     'updateTrip',
     // 📊 التقارير
     'getProfitLoss', 'getExpenseBreakdown', 'getFuelSummary',
-    'getDriverPerformance', 'getClientActivity', 'getMonthlyTrends', 'getVehicleUtilization'
+    'getDriverPerformance', 'getClientActivity', 'getMonthlyTrends', 'getVehicleUtilization',
+    // 🔧 الصيانة (قراءة فقط)
+    'getMaintenance', 'getVehicleMaintenance', 'getTripMaintenance',
+    // مصروفات عامة (قراءة فقط)
+    'getExpenses',
+    // تحليلات
+    'getFuelAnalytics'
   ]
 };
 
@@ -255,13 +285,14 @@ function updateIdempotencyCache(key, finalResponsePayload) {
 function validateBusinessConstraints(e, action) {
   let ss = SpreadsheetApp.getActiveSpreadsheet();
   
-  // [BC_01]: لا يمكن إضافة مصروف إلا إذا كانت الرحلة مفتوحة (OPEN)
+  // [BC_01]: لا يمكن إضافة مصروف على رحلة إلا إذا كانت مفتوحة (OPEN)
   if (action === "addExpense") {
     let tripId = e.parameter.Trip_ID;
-    let tripStatus = getTripStatusFromDb(ss, tripId);
-    
-    if (tripStatus !== "OPEN") {
-      throwBusinessError("TRIP_NOT_ACTIVE", "لا يمكن إضافة مصروفات على رحلة مغلقة.");
+    if (tripId && tripId !== "") {
+      let tripStatus = getTripStatusFromDb(ss, tripId);
+      if (tripStatus !== "OPEN") {
+        throwBusinessError("TRIP_NOT_ACTIVE", "لا يمكن إضافة مصروفات على رحلة مغلقة.");
+      }
     }
   }
   

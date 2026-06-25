@@ -223,3 +223,95 @@ function expenseService_getMonthlyExpenses(ss) {
     }
   };
 }
+
+/**
+ * 5. دالة جلب كل المصروفات مع فلترة
+ */
+function expenseService_getExpenses(ss, params) {
+  let data = getCachedData("Expenses_Log");
+  if (!data) return { "success": false, "message": "شيت Expenses_Log غير موجود." };
+  
+  let categoryFilter = params.Category || "";
+  let limit = parseInt(params.Limit) || 100;
+  let offset = parseInt(params.Offset) || 0;
+  
+  let results = [];
+  for (let i = data.length - 1; i >= 1; i--) {
+    let row = data[i];
+    if (row[10] === true || row[10] === "TRUE") continue;
+    if (categoryFilter && row[4] !== categoryFilter) continue;
+    
+    results.push({
+      expense_id: row[0],
+      trip_id: row[1],
+      driver_id: row[2],
+      vehicle_id: row[3],
+      category: row[4],
+      amount: parseFloat(row[5]) || 0,
+      receipt_file_id: row[6],
+      created_by: row[7],
+      created_at: row[8],
+      expense_type: row[11] || "REGULAR",
+      description: row[12] || ""
+    });
+  }
+  
+  let total = results.length;
+  let page = results.slice(offset, offset + limit);
+  
+  return { "success": true, "data": page, "total": total };
+}
+
+/**
+ * 6. دالة تعديل مصروف
+ */
+function expenseService_updateExpense(ss, e, userId) {
+  let expenseId = e.parameter.Expense_ID;
+  if (!expenseId) throwBusinessError("BAD_REQUEST", "Expense_ID مطلوب.");
+  
+  let sheet = getCachedSheet("Expenses_Log");
+  let data = getCachedData("Expenses_Log");
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === expenseId && data[i][10] !== true) {
+      let row = i + 1;
+      
+      let newAmount = e.parameter.Amount;
+      let newCategory = e.parameter.Expense_Category;
+      
+      if (newAmount) sheet.getRange(row, 6).setValue(parseFloat(newAmount));
+      if (newCategory) sheet.getRange(row, 5).setValue(newCategory);
+      
+      let ver = (parseInt(data[i][9]) || 0) + 1;
+      sheet.getRange(row, 10).setValue(ver);
+      
+      logApiAudit(userId, "User", "updateExpense", 0, "N/A", 200);
+      return { "success": true, "message": "تم تحديث المصروف بنجاح." };
+    }
+  }
+  
+  throwBusinessError("NOT_FOUND", "المصروف غير موجود.");
+}
+
+/**
+ * 7. دالة حذف مصروف (soft delete)
+ */
+function expenseService_deleteExpense(ss, e, userId) {
+  let expenseId = e.parameter.Expense_ID;
+  if (!expenseId) throwBusinessError("BAD_REQUEST", "Expense_ID مطلوب.");
+  
+  let sheet = getCachedSheet("Expenses_Log");
+  let data = getCachedData("Expenses_Log");
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === expenseId && data[i][10] !== true) {
+      let row = i + 1;
+      sheet.getRange(row, 11).setValue(true);
+      
+      logApiAudit(userId, "User", "deleteExpense", 0, "N/A", 200);
+      return { "success": true, "message": "تم حذف المصروف بنجاح." };
+    }
+  }
+  
+  throwBusinessError("NOT_FOUND", "المصروف غير موجود.");
+}

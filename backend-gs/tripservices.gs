@@ -216,8 +216,32 @@ function tripService_updateTripStatus(e, userId) {
       for (let i = 1; i < expensesData.length; i++) {
         if (expensesData[i][1] === tripId && expensesData[i][10] !== true) {
           totalExpenses += parseFloat(expensesData[i][5]) || 0;
-        }
-      }
+  }
+}
+
+/**
+ * 8. دالة أرشفة/حذف رحلة (soft delete)
+ */
+function tripService_softDeleteTrip(e, userId) {
+  let tripId = e.parameter.Trip_ID;
+  if (!tripId) throwBusinessError("BAD_REQUEST", "Trip_ID مطلوب.");
+  
+  let sheet = getCachedSheet("Trips_Log");
+  let data = getCachedData("Trips_Log");
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === tripId) {
+      let row = i + 1;
+      sheet.getRange(row, 14).setValue(true);
+      sheet.getRange(row, 15).setValue(new Date().toISOString());
+      
+      logApiAudit(userId, "User", "softDeleteTrip", 0, "N/A", 200);
+      return { "success": true, "message": "تم أرشفة الرحلة بنجاح." };
+    }
+  }
+  
+  throwBusinessError("NOT_FOUND", "الرحلة غير موجودة.");
+}
     }
     
     let remainingAdvance = advanceCash - totalExpenses;

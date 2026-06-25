@@ -110,6 +110,9 @@ function routeRequest(e, method, userId, userRole) {
       case 'getFuelTransactions':
         resultPayload = fuelService_getTransactions(ss, e.parameter);
         break;
+      case 'getFuelAnalytics':
+        resultPayload = fuelService_getAnalytics(ss);
+        break;
       case 'updateFuelPrice':
         resultPayload = fuelService_updatePrice(ss, e.parameter, userId);
         break;
@@ -185,6 +188,9 @@ function routeRequest(e, method, userId, userRole) {
       case 'updateTrip':
         resultPayload = tripService_updateTrip(e, userId);
         break;
+      case 'softDeleteTrip':
+        resultPayload = tripService_softDeleteTrip(e, userId);
+        break;
       case 'addExpense':
         resultPayload = expenseService_addExpense(e, userId);
         break;
@@ -194,6 +200,15 @@ function routeRequest(e, method, userId, userRole) {
       case 'getTripExpenses':
         resultPayload = expenseService_getTripExpenses(ss, e.parameter);
         break;
+      case 'getExpenses':
+        resultPayload = expenseService_getExpenses(ss, e.parameter);
+        break;
+      case 'updateExpense':
+        resultPayload = expenseService_updateExpense(ss, e, userId);
+        break;
+      case 'deleteExpense':
+        resultPayload = expenseService_deleteExpense(ss, e, userId);
+        break;
       case 'getDashboard':
         resultPayload = aggregateService_getDashboard(ss, e, userId);
         break;
@@ -202,6 +217,31 @@ function routeRequest(e, method, userId, userRole) {
         break;
       case 'settleTripFinancials':
         resultPayload = accountingService_settleTrip(e, userId);
+        break;
+      
+      // 🔧 الصيانة
+      case 'getMaintenance':
+        resultPayload = maintenanceService_getAll(ss, e.parameter);
+        break;
+      case 'getVehicleMaintenance':
+        resultPayload = maintenanceService_getByVehicle(ss, e.parameter);
+        break;
+      case 'getTripMaintenance':
+        resultPayload = maintenanceService_getByTrip(ss, e.parameter);
+        break;
+      case 'updateMaintenance':
+        resultPayload = maintenanceService_updateMaintenance(ss, e.parameter, userId);
+        break;
+      case 'deleteMaintenance':
+        resultPayload = maintenanceService_deleteMaintenance(ss, e.parameter);
+        break;
+      
+      // 🔐 الصلاحيات
+      case 'getPermissions':
+        resultPayload = permissionService_getAll(ss);
+        break;
+      case 'savePermissions':
+        resultPayload = permissionService_save(ss, e);
         break;
       
       // 📊 التقارير
@@ -286,7 +326,7 @@ function handleLoginAction(e) {
  */
 function checkIfWriteOperation(action) {
   const writeActions = [
-    'createTrip', 'updateTripStatus', 'updateTrip', 'addExpense', 'settleTripFinancials',
+    'createTrip', 'updateTripStatus', 'updateTrip', 'softDeleteTrip', 'addExpense', 'settleTripFinancials',
     'updateDriver', 'updateVehicle', 'createUser', 'toggleUserStatus',
     'updateUserRole', 'deleteUser', 'resetUserPassword',
     'createVehicle', 'updateVehicle', 'deleteVehicle',
@@ -295,7 +335,10 @@ function checkIfWriteOperation(action) {
     'addFuelBalance', 'updateFuelPrice',
     'markNotificationRead', 'markAllNotificationsRead', 'deleteNotification',
     'settleDriverAdvance',
-    'addBalance', 'deductBalance', 'transferBalance'
+    'addBalance', 'deductBalance', 'transferBalance',
+    'updateExpense', 'deleteExpense',
+    'updateMaintenance', 'deleteMaintenance',
+    'savePermissions'
   ];
   return writeActions.indexOf(action) !== -1;
 }
