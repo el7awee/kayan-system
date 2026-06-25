@@ -250,6 +250,9 @@ function routeRequest(e, method, userId, userRole) {
       case 'updateTrip':
         resultPayload = tripService_updateTrip(e, realUserId);
         break;
+      case 'softDeleteTrip':
+        resultPayload = tripService_softDeleteTrip(e, realUserId);
+        break;
       case 'addExpense':
         resultPayload = expenseService_addExpense(e, realUserId);
         break;
@@ -358,7 +361,7 @@ function handleLoginAction(e) {
  */
 function checkIfWriteOperation(action) {
   const writeActions = [
-    'createTrip', 'updateTripStatus', 'updateTrip', 'addExpense', 'settleTripFinancials',
+    'createTrip', 'updateTripStatus', 'updateTrip', 'softDeleteTrip', 'addExpense', 'settleTripFinancials',
     'updateDriver', 'updateVehicle', 'createUser', 'toggleUserStatus',
     'updateUserRole', 'deleteUser', 'resetUserPassword',
     'createVehicle', 'updateVehicle', 'deleteVehicle',

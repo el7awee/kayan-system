@@ -193,8 +193,8 @@ const fbWriteAPI = {
   deleteExpense: async (expenseId) => {
     const snap = await _col('expenses').where('Expense_ID', '==', expenseId).get();
     if (snap.empty) return { success: false, message: 'المصروف غير موجود' };
-    await snap.docs[0].ref.delete();
-    return { success: true, message: 'تم حذف المصروف' };
+    await snap.docs[0].ref.update({ IsDeleted: true, Deleted_At: new Date().toISOString() });
+    return { success: true, message: 'تم أرشفة المصروف' };
   },
 
   // 📋 الرحلات
@@ -253,6 +253,13 @@ const fbWriteAPI = {
     }
     await trip.ref.update({ Trip_Status: newStatus, Version_Number: (existing.Version_Number || 0) + 1, Updated_At: new Date().toISOString() });
     return { success: true, message: 'تم تحديث الحالة' };
+  },
+
+  softDeleteTrip: async (tripId) => {
+    const snap = await _col('trips').where('Trip_ID', '==', tripId).get();
+    if (snap.empty) return { success: false, message: 'الرحلة غير موجودة' };
+    await snap.docs[0].ref.update({ IsDeleted: true, Deleted_At: new Date().toISOString() });
+    return { success: true, message: 'تم أرشفة الرحلة' };
   },
 
   // 🚛 العربيات

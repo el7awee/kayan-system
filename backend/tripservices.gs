@@ -439,3 +439,27 @@ function tripService_updateAdvanceSpent(tripId, amount, userId) {
     }
   }
 }
+
+/**
+ * Soft-delete trip (set IsDeleted flag)
+ */
+function tripService_softDeleteTrip(e, userId) {
+  let tripId = e.parameter.Trip_ID;
+  if (!tripId) throwBusinessError("BAD_REQUEST", "Trip_ID مطلوب.");
+  
+  let sheet = getCachedSheet("Trips_Log");
+  let data = getCachedData("Trips_Log");
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === tripId) {
+      let row = i + 1;
+      sheet.getRange(row, 14).setValue(true); // IsDeleted (column N)
+      sheet.getRange(row, 15).setValue(new Date().toISOString()); // Deleted_At
+      
+      logApiAudit(userId, "User", "softDeleteTrip", 0, "N/A", 200);
+      return { "success": true, "message": "تم أرشفة الرحلة بنجاح." };
+    }
+  }
+  
+  throwBusinessError("NOT_FOUND", "الرحلة غير موجودة.");
+}

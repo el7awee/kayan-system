@@ -794,8 +794,11 @@
                                     </select>
                                     <select id="trip-vehicle-id" required class="flex-1 px-3 py-2 rounded-xl text-sm">
                                         <option value="">-- اختر العربية --</option>
-                                    </select>
-                                </div>
+                            </select>
+                            <label class="flex items-center gap-1 text-xs text-muted cursor-pointer">
+                                <input type="checkbox" id="show-archived-expenses" class="accent-amber-500"> أرشيف
+                            </label>
+                        </div>
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-muted mb-1">خط السير</label>
@@ -841,6 +844,9 @@
                                 <option value="OPEN">مفتوحة</option>
                                 <option value="CLOSED">مغلقة</option>
                             </select>
+                            <label class="flex items-center gap-1 text-xs text-muted cursor-pointer">
+                                <input type="checkbox" id="show-archived-trips" class="accent-amber-500"> أرشيف
+                            </label>
                         </div>
                         <div class="overflow-x-auto">
                             <table class="w-full text-right border-collapse text-sm">

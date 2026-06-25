@@ -263,9 +263,11 @@ function bindUIEvents() {
     document.getElementById("search-expenses")?.addEventListener("input", debounce(() => loadExpensesData(), 300));
     document.getElementById("filter-expense-from")?.addEventListener("change", () => loadExpensesData());
     document.getElementById("filter-expense-to")?.addEventListener("change", () => loadExpensesData());
+    document.getElementById("show-archived-expenses")?.addEventListener("change", () => loadExpensesData());
     document.getElementById("filter-trip-from")?.addEventListener("change", () => loadTripsData(true));
     document.getElementById("filter-trip-to")?.addEventListener("change", () => loadTripsData(true));
     document.getElementById("filter-trip-status")?.addEventListener("change", () => loadTripsData(true));
+    document.getElementById("show-archived-trips")?.addEventListener("change", () => loadTripsData(true));
 
     // البنزينة
     document.getElementById("btn-add-fuel-balance")?.addEventListener("click", handleAddFuelBalance);
@@ -1113,9 +1115,11 @@ function renderTripsTable() {
     const fromVal = document.getElementById("filter-trip-from")?.value;
     const toVal = document.getElementById("filter-trip-to")?.value;
     const statusFilter = document.getElementById("filter-trip-status")?.value;
+    const showArchived = document.getElementById("show-archived-trips")?.checked;
 
     const { rows: validTrips, total } = getPaginatedData('trips', t => {
-        if (!t[0] || t[0] === "Trip_ID" || t[13] === true || t[13] === "TRUE") return false;
+        if (!t[0] || t[0] === "Trip_ID") return false;
+        if (!showArchived && (t[13] === true || t[13] === "TRUE")) return false;
         if (statusFilter && t[7] !== statusFilter) return false;
         if (fromVal && t[1]) {
             const d = new Date(t[1]); const f = new Date(fromVal);
@@ -1161,6 +1165,9 @@ function renderTripsTable() {
             }
         } else {
             actionButtons = `<span class="badge badge-closed"><i class="fa-solid fa-lock text-[10px]"></i> مغلقة</span>`;
+        }
+        if (["Admin", "Manager"].includes(role) && trip[13] !== true) {
+            actionButtons += ` <button onclick="softDeleteTrip('${tripId}')" class="px-2 py-1 text-xs bg-rose-500/20 text-rose-400 rounded-lg hover:bg-rose-500/30 transition"><i class="fa-solid fa-box-archive ml-1"></i> أرشفة</button>`;
         }
 
         const row = document.createElement("tr");
@@ -1562,8 +1569,10 @@ function renderExpensesTable(expenses) {
     const searchQuery = (document.getElementById("search-expenses")?.value || "").toLowerCase();
     const fromVal = document.getElementById("filter-expense-from")?.value;
     const toVal = document.getElementById("filter-expense-to")?.value;
+    const showArchived = document.getElementById("show-archived-expenses")?.checked;
     
     let filtered = expenses;
+    if (!showArchived) filtered = filtered.filter(e => e.IsDeleted !== true && e.isdeleted !== true);
     if (catFilter) filtered = filtered.filter(e => e.category === catFilter);
     if (searchQuery) {
         filtered = filtered.filter(e =>
@@ -1600,9 +1609,11 @@ function renderExpensesTable(expenses) {
         const isOwner = state.user.id === ex.created_by;
         const showActions = state.user.role === "Admin" || state.user.role === "Manager" || isOwner;
         const hasReceipt = ex.receipt_file_id && ex.receipt_file_id !== "0" && ex.receipt_file_id !== "";
+        const isArchived = ex.IsDeleted === true || ex.isdeleted === true;
+        const rowClass = isArchived ? 'border-b border-border hover:bg-secondary/20 transition opacity-50' : 'border-b border-border hover:bg-secondary/20 transition';
         return `
-            <tr class="border-b border-border hover:bg-secondary/20 transition">
-                <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded-full text-[10px] ${getCategoryBadge(ex.category)}">${esc(ex.category)}</span></td>
+            <tr class="${rowClass}">
+                <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded-full text-[10px] ${getCategoryBadge(ex.category)}">${esc(ex.category)}${isArchived ? ' 📦' : ''}</span></td>
                 <td class="py-2.5 px-3 text-muted max-w-[200px] truncate" title="${esc(ex.description || '')}">${ex.description ? esc(ex.description) : '<span class="text-muted/50">—</span>'}</td>
                 <td class="py-2.5 px-3 font-mono font-bold">${(ex.amount || 0).toLocaleString()} ج.م</td>
                 <td class="py-2.5 px-3">${hasReceipt ? `<a href="https://drive.google.com/file/d/${esc(ex.receipt_file_id)}/view" target="_blank" class="text-sky-400 hover:text-sky-300" title="عرض الإيصال"><i class="fa-solid fa-image"></i></a>` : '<span class="text-muted/50">—</span>'}</td>
@@ -1685,6 +1696,38 @@ async function handleExpenseEdit(expenseId) {
     
     document.querySelector("#view-expenses .card").scrollIntoView({ behavior: 'smooth' });
 }
+
+window.softDeleteTrip = async function(tripId) {
+    const confirm = await Swal.fire({
+        title: 'أرشفة الرحلة؟',
+        text: 'سيتم نقل الرحلة إلى الأرشيف واخفاؤها من الجدول الرئيسي.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#f59e0b',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: 'أرشفة',
+        cancelButtonText: 'إلغاء'
+    });
+    if (!confirm.isConfirmed) return;
+
+    try {
+        if (USE_FIREBASE && window.fbDb) {
+            const res = await window.fbWriteAPI.softDeleteTrip(tripId);
+            if (res.success) {
+                Swal.fire({ icon: 'success', title: 'تم الأرشفة', timer: 1500, showConfirmButton: false });
+                loadTripsData(true); refreshDashboard();
+                return;
+            }
+            console.warn('Firebase write failed, falling to Apps Script:', res.message);
+        }
+        await callBackend("softDeleteTrip", { Trip_ID: tripId });
+        Swal.fire({ icon: 'success', title: 'تم الأرشفة', timer: 1500, showConfirmButton: false });
+        loadTripsData(true);
+        refreshDashboard();
+    } catch (err) {
+        handleStandardError(err);
+    }
+};
 
 async function handleExpenseDelete(expenseId) {
     const confirm = await Swal.fire({
