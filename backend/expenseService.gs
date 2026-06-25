@@ -15,7 +15,7 @@ function expenseService_addExpense(e, userId) {
   let sheet = getCachedSheet("Expenses_Log");
   if (!sheet) throwBusinessError("SYSTEM_ERROR", "شيت Expenses_Log غير موجود.");
   
-  let tripId = e.parameter.Trip_ID;
+  let tripId = e.parameter.Trip_ID || "";
   let amount = parseFloat(e.parameter.Amount || "0");
   let category = e.parameter.Expense_Category || "General";
   
@@ -23,8 +23,8 @@ function expenseService_addExpense(e, userId) {
   let driverId = e.parameter.Driver_ID || "";
   let vehicleId = e.parameter.Vehicle_ID || "";
   
-  if (!tripId || amount <= 0) {
-    throwBusinessError("BAD_REQUEST", "بيانات المصروف غير صالحة، يجب تحديد رقم الرحلة والمبلغ بشكل صحيح.");
+  if (amount <= 0) {
+    throwBusinessError("BAD_REQUEST", "بيانات المصروف غير صالحة، يجب إدخال المبلغ بشكل صحيح.");
   }
   
   // ==========================================

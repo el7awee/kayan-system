@@ -1121,7 +1121,7 @@ function renderExpensesTable(expenses) {
         const showActions = state.user.role === "Admin" || state.user.role === "Manager" || isOwner;
         return `
             <tr class="border-b border-border hover:bg-secondary/20 transition">
-                <td class="py-2.5 px-3 font-mono text-[11px]">${ex.trip_id || '—'}</td>
+                <td class="py-2.5 px-3 font-mono text-[11px]">${ex.trip_id || '<span class="text-muted">عام</span>'}</td>
                 <td class="py-2.5 px-3">${ex.driver_id || '—'}</td>
                 <td class="py-2.5 px-3">${ex.vehicle_id || '—'}</td>
                 <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded-full text-[10px] ${getCategoryBadge(ex.category)}">${ex.category}</span></td>
@@ -1231,8 +1231,8 @@ async function handleAddExpenseSubmit(e) {
     const vehicleId = document.getElementById("expense-vehicle-id")?.value;
     const category = document.getElementById("expense-category")?.value;
     const amount = parseFloat(document.getElementById("expense-amount")?.value) || 0;
-    if (!tripId || !driverId || !vehicleId || !category || amount <= 0) {
-        Swal.fire({ icon: 'warning', title: 'بيانات ناقصة', text: 'الرجاء إدخال جميع الحقول المطلوبة.' });
+    if (!category || amount <= 0) {
+        Swal.fire({ icon: 'warning', title: 'بيانات ناقصة', text: 'الرجاء إدخال التصنيف والمبلغ.' });
         return;
     }
 
