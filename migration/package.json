@@ -1,0 +1,13 @@
+{
+  "name": "kayan-migration",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "import": "node importToFirestore.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0",
+    "googleapis": "^140.0.0"
+  }
+}

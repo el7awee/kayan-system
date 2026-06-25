@@ -83,12 +83,6 @@ function uploadBase64FileToDrive(base64Data, fileName) {
     throwBusinessError("CLOUD_STORAGE_ERROR", "فشل النظام في معالجة ورفع الملف: " + driveError.message);
   }
 }
-    return file.getId();
-    
-  } catch (driveError) {
-    throwBusinessError("CLOUD_STORAGE_ERROR", "فشل النظام في معالجة ورفع الملف: " + driveError.message);
-  }
-}
 
 /**
  * 3. دالة جلب مصروفات رحلة محددة
