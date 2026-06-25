@@ -1019,6 +1019,15 @@ window.editTrip = async function(tripId) {
 
     if (formValues) {
         try {
+            if (USE_FIREBASE && window.fbWriteAPI) {
+                const res = await fbWriteAPI.updateTrip(formValues);
+                if (res.success) {
+                    Swal.fire({ icon: 'success', title: 'تم التحديث', text: res.message, timer: 2000, showConfirmButton: false });
+                    loadTripsData(true); refreshDashboard();
+                    return;
+                }
+                throw new Error(res.message);
+            }
             const response = await callBackend("updateTrip", formValues);
             Swal.fire({ icon: 'success', title: 'تم التحديث', text: response.message || 'تم تحديث الرحلة بنجاح', timer: 2000, showConfirmButton: false });
             loadTripsData(true);
@@ -1157,18 +1166,47 @@ window.triggerSettlement = async function(tripId, currentVersion) {
     try {
         // 1) تسجيل المصاريف الجديدة (كل مصروف بيتخصم من عهدة السائق)
         for (const row of rows) {
-            await callBackend("addExpense", {
-                Trip_ID: tripId,
-                Driver_ID: driverId,
-                Vehicle_ID: vehicleId,
-                Expense_Category: row.category,
-                Amount: row.amount,
-                Fuel_Liters: row.liters || 0,
-                Fuel_Price: fuelPrice
-            });
+            if (USE_FIREBASE && window.fbWriteAPI) {
+                const r = await fbWriteAPI.addExpense({
+                    Trip_ID: tripId,
+                    Driver_ID: driverId,
+                    Vehicle_ID: vehicleId,
+                    Expense_Category: row.category,
+                    Amount: row.amount,
+                    Fuel_Liters: row.liters || 0,
+                    Fuel_Price: fuelPrice
+                });
+                if (!r.success) throw new Error(r.message);
+            } else {
+                await callBackend("addExpense", {
+                    Trip_ID: tripId,
+                    Driver_ID: driverId,
+                    Vehicle_ID: vehicleId,
+                    Expense_Category: row.category,
+                    Amount: row.amount,
+                    Fuel_Liters: row.liters || 0,
+                    Fuel_Price: fuelPrice
+                });
+            }
         }
 
         // 2) التصفية والإغلاق على العهدة الفعلية المتبقّية
+        if (USE_FIREBASE && window.fbWriteAPI) {
+            const res = await fbWriteAPI.updateTripStatus(tripId, 'CLOSED', currentVersion);
+            if (res.success) {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'تمت التصفية والإغلاق',
+                    html: `المتبقّي: <b>${(res.remaining_advance ?? 0)} ج.م</b><br>${settlementType === "RETURNED" ? "رجع للمحاسب" : "اترحّل مع السائق"}`,
+                    timer: 2600,
+                    showConfirmButton: false
+                });
+                loadTripsData(true);
+                refreshDashboard();
+                return;
+            }
+            throw new Error(res.message);
+        }
         const response = await callBackend("settleTripFinancials", {
             Trip_ID: tripId,
             Settlement_Type: settlementType,
@@ -1224,6 +1262,16 @@ async function handleCreateTripSubmit(e) {
     };
 
     try {
+        if (USE_FIREBASE && window.fbWriteAPI) {
+            const res = await fbWriteAPI.createTrip(params);
+            if (res.success) {
+                Swal.fire({ icon: 'success', title: 'تم بث الرحلة', text: `المعرف: ${res.trip_id}` });
+                document.getElementById("form-create-trip").reset();
+                loadTripsData(true); refreshDashboard();
+                return;
+            }
+            throw new Error(res.message);
+        }
         const response = await callBackend("createTrip", params);
         Swal.fire({ icon: 'success', title: 'تم البث', text: `المعرف: ${response.trip_id}` });
         document.getElementById("form-create-trip").reset();
@@ -1419,6 +1467,16 @@ async function handleExpenseDelete(expenseId) {
     if (!confirm.isConfirmed) return;
     
     try {
+        if (USE_FIREBASE && window.fbWriteAPI) {
+            const res = await fbWriteAPI.deleteExpense(expenseId);
+            if (res.success) {
+                Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
+                loadExpensesData(true);
+                refreshDashboard();
+                return;
+            }
+            throw new Error(res.message);
+        }
         await callBackend("deleteExpense", { Expense_ID: expenseId });
         Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
         loadExpensesData(true);
@@ -1459,11 +1517,44 @@ async function handleAddExpenseSubmit(e) {
     try {
         const editId = document.getElementById("expense-edit-id")?.value;
         if (editId) {
+            if (USE_FIREBASE && window.fbWriteAPI) {
+                const res = await fbWriteAPI.updateExpense({
+                    expense_id: editId,
+                    category: document.getElementById('expense-category').value,
+                    description: document.getElementById('expense-description').value.trim(),
+                    amount: parseFloat(document.getElementById('expense-amount').value) || 0
+                });
+                if (res.success) {
+                    Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
+                    cancelExpenseEdit();
+                    loadExpensesData(true); refreshDashboard();
+                    return;
+                }
+                throw new Error(res.message);
+            }
             params.Expense_ID = editId;
             await callBackend("updateExpense", params);
             Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
             cancelExpenseEdit();
         } else {
+            if (USE_FIREBASE && window.fbWriteAPI) {
+                const res = await fbWriteAPI.addExpense({
+                    category: document.getElementById('expense-category').value,
+                    description: document.getElementById('expense-description').value,
+                    amount: document.getElementById('expense-amount').value,
+                    fileBase64: document.getElementById('expense-file-base64')?.value,
+                    fileName: document.getElementById('expense-file-name')?.value
+                });
+                if (res.success) {
+                    document.getElementById('form-add-expense').reset();
+                    document.getElementById('expense-file-base64').value = '';
+                    document.getElementById('expense-file-name').value = '';
+                    Swal.fire({ icon: 'success', title: 'تم إضافة المصروف', timer: 1500, showConfirmButton: false });
+                    loadExpensesData(true); refreshDashboard();
+                    return;
+                }
+                throw new Error(res.message);
+            }
             await callBackend("addExpense", params);
             Swal.fire({ icon: 'success', title: 'تم الحفظ', timer: 1500, showConfirmButton: false });
             document.getElementById("form-add-expense").reset();
@@ -1838,6 +1929,16 @@ async function handleAddFuelBalance() {
 
     if (amount && parseFloat(amount) > 0) {
         try {
+            if (USE_FIREBASE && window.fbWriteAPI) {
+                const res = await fbWriteAPI.addFuelBalance(amount);
+                if (res.success) {
+                    Swal.fire({ icon: 'success', title: 'تم الإضافة', text: res.message, timer: 2000, showConfirmButton: false });
+                    loadFuelData();
+                    refreshDashboard();
+                    return;
+                }
+                throw new Error(res.message);
+            }
             const response = await callBackend("addFuelBalance", { Amount: amount });
             Swal.fire({ icon: 'success', title: 'تم الإضافة', text: response.message, timer: 2000, showConfirmButton: false });
             loadFuelData();
@@ -1862,6 +1963,15 @@ async function handleUpdateFuelPrice() {
 
     if (price && parseFloat(price) > 0) {
         try {
+            if (USE_FIREBASE && window.fbWriteAPI) {
+                await fbDb.collection('settings').doc('fuel').update({
+                    fuel_price_per_liter: parseFloat(price),
+                    last_updated: new Date().toISOString()
+                });
+                Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 2000, showConfirmButton: false });
+                loadFuelData();
+                return;
+            }
             const response = await callBackend("updateFuelPrice", { Fuel_Price: price });
             Swal.fire({ icon: 'success', title: 'تم التحديث', text: response.message, timer: 2000, showConfirmButton: false });
             loadFuelData();
@@ -1972,6 +2082,15 @@ async function handleAddVehicle() {
 
     if (formValues && formValues.Plate_Number && formValues.Model) {
         try {
+            if (USE_FIREBASE && window.fbWriteAPI) {
+                const res = await fbWriteAPI.createVehicle(formValues);
+                if (res.success) {
+                    Swal.fire({ icon: 'success', title: 'تمت الإضافة', timer: 1500, showConfirmButton: false });
+                    loadVehiclesData(true);
+                    return;
+                }
+                throw new Error(res.message);
+            }
             await callBackend("createVehicle", formValues);
             Swal.fire({ icon: 'success', title: 'تمت الإضافة', timer: 1500, showConfirmButton: false });
             loadVehiclesData(true);
@@ -2019,6 +2138,15 @@ window.editVehicle = async function(vehicleId) {
 
     if (formValues) {
         try {
+            if (USE_FIREBASE && window.fbWriteAPI) {
+                const res = await fbWriteAPI.updateVehicle(formValues);
+                if (res.success) {
+                    Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
+                    loadVehiclesData(true);
+                    return;
+                }
+                throw new Error(res.message);
+            }
             await callBackend("updateVehicle", formValues);
             Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
             loadVehiclesData(true);
@@ -2040,6 +2168,15 @@ window.deleteVehicle = async function(vehicleId) {
     if (!confirm.isConfirmed) return;
 
     try {
+        if (USE_FIREBASE && window.fbWriteAPI) {
+            const res = await fbWriteAPI.deleteVehicle(vehicleId);
+            if (res.success) {
+                Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
+                loadVehiclesData(true);
+                return;
+            }
+            throw new Error(res.message);
+        }
         await callBackend("deleteVehicle", { Vehicle_ID: vehicleId });
         Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
         loadVehiclesData(true);
@@ -2147,6 +2284,15 @@ async function handleAddDriver() {
 
     if (formValues && formValues.Full_Name && formValues.Phone) {
         try {
+            if (USE_FIREBASE && window.fbWriteAPI) {
+                const res = await fbWriteAPI.createDriver(formValues);
+                if (res.success) {
+                    Swal.fire({ icon: 'success', title: 'تمت الإضافة', timer: 1500, showConfirmButton: false });
+                    loadDriversData(true);
+                    return;
+                }
+                throw new Error(res.message);
+            }
             await callBackend("createDriver", formValues);
             Swal.fire({ icon: 'success', title: 'تمت الإضافة', timer: 1500, showConfirmButton: false });
             loadDriversData(true);
@@ -2191,6 +2337,15 @@ window.editDriver = async function(driverId) {
 
     if (formValues) {
         try {
+            if (USE_FIREBASE && window.fbWriteAPI) {
+                const res = await fbWriteAPI.updateDriver(formValues);
+                if (res.success) {
+                    Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
+                    loadDriversData(true);
+                    return;
+                }
+                throw new Error(res.message);
+            }
             await callBackend("updateDriverData", formValues);
             Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
             loadDriversData(true);
@@ -2212,6 +2367,15 @@ window.deleteDriver = async function(driverId) {
     if (!confirm.isConfirmed) return;
 
     try {
+        if (USE_FIREBASE && window.fbWriteAPI) {
+            const res = await fbWriteAPI.deleteDriver(driverId);
+            if (res.success) {
+                Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
+                loadDriversData(true);
+                return;
+            }
+            throw new Error(res.message);
+        }
         await callBackend("deleteDriver", { Driver_ID: driverId });
         Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
         loadDriversData(true);
@@ -2318,6 +2482,15 @@ async function handleAddClient() {
 
     if (formValues && formValues.Client_Name && formValues.Phone) {
         try {
+            if (USE_FIREBASE && window.fbWriteAPI) {
+                const res = await fbWriteAPI.createClient(formValues);
+                if (res.success) {
+                    Swal.fire({ icon: 'success', title: 'تمت الإضافة', timer: 1500, showConfirmButton: false });
+                    loadClientsData(true);
+                    return;
+                }
+                throw new Error(res.message);
+            }
             await callBackend("createClient", formValues);
             Swal.fire({ icon: 'success', title: 'تمت الإضافة', timer: 1500, showConfirmButton: false });
             loadClientsData(true);
@@ -2359,6 +2532,15 @@ window.editClient = async function(clientId) {
 
     if (formValues) {
         try {
+            if (USE_FIREBASE && window.fbWriteAPI) {
+                const res = await fbWriteAPI.updateClient(formValues);
+                if (res.success) {
+                    Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
+                    loadClientsData(true);
+                    return;
+                }
+                throw new Error(res.message);
+            }
             await callBackend("updateClient", formValues);
             Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
             loadClientsData(true);
@@ -2380,6 +2562,15 @@ window.deleteClient = async function(clientId) {
     if (!confirm.isConfirmed) return;
 
     try {
+        if (USE_FIREBASE && window.fbWriteAPI) {
+            const res = await fbWriteAPI.deleteClient(clientId);
+            if (res.success) {
+                Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
+                loadClientsData(true);
+                return;
+            }
+            throw new Error(res.message);
+        }
         await callBackend("deleteClient", { Client_ID: clientId });
         Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
         loadClientsData(true);
@@ -2605,6 +2796,16 @@ async function handleAddBalance() {
 
     if (formValues) {
         try {
+            if (USE_FIREBASE && window.fbWriteAPI) {
+                const res = await fbWriteAPI.addBalance(formValues);
+                if (res.success) {
+                    Swal.fire({ icon: 'success', title: 'تم الإيداع', text: res.message, timer: 2000, showConfirmButton: false });
+                    loadBalanceData(true);
+                    refreshDashboard();
+                    return;
+                }
+                throw new Error(res.message);
+            }
             const response = await callBackend("addBalance", formValues);
             Swal.fire({ icon: 'success', title: 'تم الإيداع', text: response.message, timer: 2000, showConfirmButton: false });
             loadBalanceData(true);
@@ -2701,6 +2902,16 @@ async function handleTransferBalance() {
 
     if (formValues) {
         try {
+            if (USE_FIREBASE && window.fbWriteAPI) {
+                const res = await fbWriteAPI.transferBalance(formValues);
+                if (res.success) {
+                    Swal.fire({ icon: 'success', title: 'تم التحويل', text: res.message, timer: 2000, showConfirmButton: false });
+                    loadBalanceData(true);
+                    refreshDashboard();
+                    return;
+                }
+                throw new Error(res.message);
+            }
             const response = await callBackend("transferBalance", formValues);
             Swal.fire({ icon: 'success', title: 'تم التحويل', text: response.message, timer: 2000, showConfirmButton: false });
             loadBalanceData(true);
@@ -2780,6 +2991,15 @@ function renderNotifications(notifications) {
 
 window.markNotificationRead = async function(notificationId) {
     try {
+        if (USE_FIREBASE && window.fbWriteAPI) {
+            const res = await fbWriteAPI.markNotificationRead(notificationId);
+            if (res.success) {
+                loadNotificationsData();
+                refreshDashboard();
+                return;
+            }
+            throw new Error(res.message);
+        }
         await callBackend("markNotificationRead", { Notification_ID: notificationId });
         loadNotificationsData();
         refreshDashboard();
@@ -2790,6 +3010,14 @@ window.markNotificationRead = async function(notificationId) {
 
 window.deleteNotification = async function(notificationId) {
     try {
+        if (USE_FIREBASE && window.fbWriteAPI) {
+            const res = await fbWriteAPI.deleteNotification(notificationId);
+            if (res.success) {
+                loadNotificationsData();
+                return;
+            }
+            throw new Error(res.message);
+        }
         await callBackend("deleteNotification", { Notification_ID: notificationId });
         loadNotificationsData();
     } catch (err) {
@@ -2799,6 +3027,16 @@ window.deleteNotification = async function(notificationId) {
 
 async function handleMarkAllRead() {
     try {
+        if (USE_FIREBASE && window.fbWriteAPI) {
+            const res = await fbWriteAPI.markAllNotificationsRead();
+            if (res.success) {
+                loadNotificationsData();
+                refreshDashboard();
+                Swal.fire({ icon: 'success', title: 'تم تحديد الكل كمقروء', timer: 1500, showConfirmButton: false });
+                return;
+            }
+            throw new Error(res.message);
+        }
         await callBackend("markAllNotificationsRead", {});
         loadNotificationsData();
         refreshDashboard();
@@ -2913,6 +3151,15 @@ window.editUserRole = async function(userId, currentRole) {
 
     if (newRole && newRole !== currentRole) {
         try {
+            if (USE_FIREBASE && window.fbWriteAPI) {
+                const res = await fbWriteAPI.updateUserRole({ Target_User_ID: userId, New_Role: newRole });
+                if (res.success) {
+                    Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
+                    loadUsersData(true);
+                    return;
+                }
+                throw new Error(res.message);
+            }
             await callBackend("updateUserRole", {
                 Target_User_ID: userId,
                 New_Role: newRole
@@ -2977,6 +3224,22 @@ async function handleCreateUserSubmit(e) {
     setButtonLoading(submitBtn, true, "جاري الإنشاء...");
 
     try {
+        if (USE_FIREBASE && window.fbWriteAPI) {
+            const res = await fbWriteAPI.createUser({
+                Full_Name: fullName,
+                New_Username: username,
+                New_Password: password,
+                Assigned_Role: role,
+                Email: email
+            });
+            if (res.success) {
+                Swal.fire({ icon: 'success', title: 'تم الإنشاء', text: `تم إنشاء حساب ${fullName}`, timer: 2000, showConfirmButton: false });
+                document.getElementById("form-create-user").reset();
+                loadUsersData(true);
+                return;
+            }
+            throw new Error(res.message);
+        }
         await callBackend("createUser", {
             Full_Name: fullName,
             New_Username: username,
@@ -3013,6 +3276,15 @@ window.toggleUserStatus = async function(userId, currentStatus) {
     if (!confirmation.isConfirmed) return;
 
     try {
+        if (USE_FIREBASE && window.fbWriteAPI) {
+            const res = await fbWriteAPI.toggleUserStatus({ Target_User_ID: userId, New_Status: newStatus });
+            if (res.success) {
+                Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
+                loadUsersData(true);
+                return;
+            }
+            throw new Error(res.message);
+        }
         await callBackend("toggleUserStatus", {
             Target_User_ID: userId,
             New_Status: newStatus
@@ -3039,6 +3311,15 @@ window.deleteUser = async function(userId) {
     if (!confirmation.isConfirmed) return;
 
     try {
+        if (USE_FIREBASE && window.fbWriteAPI) {
+            const res = await fbWriteAPI.deleteUser(userId);
+            if (res.success) {
+                Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
+                loadUsersData(true);
+                return;
+            }
+            throw new Error(res.message);
+        }
         await callBackend("deleteUser", { Target_User_ID: userId });
         Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
         loadUsersData(true);
