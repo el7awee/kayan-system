@@ -226,13 +226,14 @@ function updateIdempotencyCache(key, finalResponsePayload) {
 function validateBusinessConstraints(e, action) {
   let ss = SpreadsheetApp.getActiveSpreadsheet();
   
-  // [BC_01]: لا يمكن إضافة مصروف إلا إذا كانت الرحلة مفتوحة (OPEN)
+  // [BC_01]: لا يمكن إضافة مصروف إلا إذا كانت الرحلة مفتوحة (OPEN) — فقط لو فيه رحلة
   if (action === "addExpense") {
     let tripId = e.parameter.Trip_ID;
-    let tripStatus = getTripStatusFromDb(ss, tripId);
-    
-    if (tripStatus !== "OPEN") {
-      throwBusinessError("TRIP_NOT_ACTIVE", "لا يمكن إضافة مصروفات على رحلة مغلقة.");
+    if (tripId && tripId.trim() !== "") {
+      let tripStatus = getTripStatusFromDb(ss, tripId);
+      if (tripStatus !== "OPEN") {
+        throwBusinessError("TRIP_NOT_ACTIVE", "لا يمكن إضافة مصروفات على رحلة مغلقة.");
+      }
     }
   }
   
