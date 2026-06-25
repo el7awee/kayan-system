@@ -557,13 +557,13 @@ async function refreshDashboard(forceRefresh = false) {
 
         // 🟢 محاولة Firebase أولاً
         let fbData = null;
-        if (USE_FIREBASE && window.fbDbAPI) {
+        if (USE_FIREBASE && window.fbDb) {
             try {
                 const [dash, vehRes, drvRes, fuelTxnRes] = await Promise.all([
-                    fbDbAPI.getDashboard(),
-                    fbDbAPI.getVehicles(),
-                    fbDbAPI.getDrivers(),
-                    fbDbAPI.getFuelTransactions()
+                    window.fbDbAPI.getDashboard(),
+                    window.fbDbAPI.getVehicles(),
+                    window.fbDbAPI.getDrivers(),
+                    window.fbDbAPI.getFuelTransactions()
                 ]);
                 fbData = { dash: dash?.data || {}, vehRes: vehRes || {}, drvRes: drvRes || {}, fuelTxnRes: fuelTxnRes || {} };
             } catch (fbErr) {
@@ -575,8 +575,16 @@ async function refreshDashboard(forceRefresh = false) {
         const asDash = await callBackend("getDashboard", { Limit: 20, _force: forceRefresh }).catch(() => ({}));
         const asD = asDash?.data || {};
 
-        // استخدم Firebase data لو موجود، وإلا استخدم Apps Script
-        const d = (fbData?.dash?.trips?.length) ? fbData.dash : asD;
+        // Normalize: if using Apps Script, map field names
+        let d;
+        if (fbData?.dash?.trips?.length) {
+            d = fbData.dash;
+        } else {
+            d = Object.assign({}, asD);
+            d.active_trips = (asD.trips || []).filter(t => t.trip_status === 'OPEN' || t[7] === 'OPEN').length;
+            d.current_fuel_balance = asD.fuel?.current_balance || 0;
+            d.total_expenses = asD.monthly_expenses?.total || 0;
+        }
 
         // Vehicles: Firebase data أو fetch منفصل من Apps Script
         let vehicles = fbData?.vehRes?.data || [];
@@ -651,20 +659,47 @@ async function refreshDashboard(forceRefresh = false) {
 // ─── تحليل استهلاك البنزين ───
 async function loadFuelAnalytics() {
     try {
-        if (USE_FIREBASE && window.fbDbAPI) {
-            const [txnRes] = await Promise.all([fbDbAPI.getFuelTransactions()]);
-            const txns = txnRes?.data || [];
-            const initialTxns = txns.filter(t => t.Transaction_Type === 'INITIAL' || t.Transaction_Type === 'ADD');
+        let txns = [];
+        if (USE_FIREBASE && window.fbDb) {
+            const txnRes = await window.fbDbAPI.getFuelTransactions();
+            txns = txnRes?.data || [];
+        }
+        if (!txns.length) {
+            const res = await callBackend("getFuelAnalytics").catch(() => ({}));
+            const data = res?.data;
+            if (data) {
+                document.getElementById("fuel-analytics-total").innerText = data.total_liters || 0;
+                document.getElementById("fuel-analytics-cost").innerText = (data.total_cost || 0).toLocaleString('ar-EG');
+                const avg = data.vehicles?.length > 0 ? (data.total_liters / data.vehicles.length).toFixed(1) : 0;
+                document.getElementById("fuel-analytics-avg").innerText = avg;
+                document.getElementById("fuel-analytics-trips").innerText = data.trip_count || 0;
+                const tbody = document.querySelector("#fuel-analytics-table tbody");
+                if (!tbody) return;
+                if (!data.vehicles || data.vehicles.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted">لا توجد بيانات</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.vehicles.map(v => `
+                    <tr class="border-b border-border hover:bg-secondary/30 transition">
+                        <td class="py-2 px-2 font-medium">${v.vehicle_id}</td>
+                        <td class="py-2 px-2 font-mono">${v.total_liters}</td>
+                        <td class="py-2 px-2 font-mono">${v.total_cost.toLocaleString()}</td>
+                        <td class="py-2 px-2">${v.trip_count}</td>
+                    </tr>
+                `).join('');
+                return;
+            }
+        }
 
+        if (txns.length) {
+            const initialTxns = txns.filter(t => t.Transaction_Type === 'INITIAL' || t.Transaction_Type === 'ADD');
             const totalLiters = initialTxns.reduce((s, t) => s + (parseFloat(t.Amount_Liters) || 0), 0);
             const totalCost = initialTxns.reduce((s, t) => s + (parseFloat(t.Amount_EGP) || 0), 0);
             const tripCount = new Set(initialTxns.map(t => t.Trip_ID).filter(Boolean)).size;
-
             document.getElementById("fuel-analytics-total").innerText = totalLiters || 0;
             document.getElementById("fuel-analytics-cost").innerText = (totalCost || 0).toLocaleString('ar-EG');
             document.getElementById("fuel-analytics-avg").innerText = initialTxns.length > 0 ? (totalLiters / initialTxns.length).toFixed(1) : 0;
             document.getElementById("fuel-analytics-trips").innerText = tripCount;
-
             const vehicleMap = {};
             initialTxns.filter(t => t.Trip_ID).forEach(t => {
                 const vId = t.Vehicle_ID || t.Vehicle_Number || 'أخرى';
@@ -673,7 +708,6 @@ async function loadFuelAnalytics() {
                 vehicleMap[vId].cost += parseFloat(t.Amount_EGP) || 0;
                 vehicleMap[vId].trips.add(t.Trip_ID);
             });
-
             const tbody = document.querySelector("#fuel-analytics-table tbody");
             if (!tbody) return;
             const entries = Object.entries(vehicleMap);
@@ -689,32 +723,9 @@ async function loadFuelAnalytics() {
                     <td class="py-2 px-2">${v.trips.size}</td>
                 </tr>
             `).join('');
-        } else {
-            const res = await callBackend("getFuelAnalytics");
-            const data = res?.data;
-            if (!data) return;
-            
-            document.getElementById("fuel-analytics-total").innerText = data.total_liters || 0;
-            
-            const tbody = document.querySelector("#fuel-analytics-table tbody");
-            if (!tbody) return;
-            
-            if (!data.vehicles || data.vehicles.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted">لا توجد بيانات</td></tr>';
-                return;
-            }
-            
-            tbody.innerHTML = data.vehicles.map(v => `
-                <tr class="border-b border-border hover:bg-secondary/30 transition">
-                    <td class="py-2 px-2 font-medium">${v.vehicle_id}</td>
-                    <td class="py-2 px-2 font-mono">${v.total_liters}</td>
-                    <td class="py-2 px-2 font-mono">${v.total_cost.toLocaleString()}</td>
-                    <td class="py-2 px-2">${v.trip_count}</td>
-                </tr>
-            `).join('');
         }
     } catch (e) {
-        if (!USE_FIREBASE) console.error("فشل تحليل استهلاك البنزين:", e);
+        console.error("فشل تحليل استهلاك البنزين:", e);
     }
 }
 
@@ -724,12 +735,12 @@ async function loadDropdowns(forceRefresh = false) {
     
     try {
         let lookups;
-        if (USE_FIREBASE && window.fbDbAPI) {
+        if (USE_FIREBASE && window.fbDb) {
             try {
                 const [clientsRes, driversRes, vehiclesRes] = await Promise.all([
-                    fbDbAPI.getClients(),
-                    fbDbAPI.getDrivers(),
-                    fbDbAPI.getVehicles()
+                    window.fbDbAPI.getClients(),
+                    window.fbDbAPI.getDrivers(),
+                    window.fbDbAPI.getVehicles()
                 ]);
                 const fClients = clientsRes.success ? clientsRes.data : [];
                 const fDrivers = driversRes.success ? driversRes.data : [];
@@ -774,8 +785,8 @@ async function loadDropdowns(forceRefresh = false) {
         let busyVehicleIds = new Set();
         try {
             let tripsData;
-            if (USE_FIREBASE && window.fbDbAPI) {
-                const fbRes = await fbDbAPI.getTrips();
+            if (USE_FIREBASE && window.fbDb) {
+                const fbRes = await window.fbDbAPI.getTrips();
                 if (fbRes.success) tripsData = fbRes.data;
             }
             if (!tripsData) {
@@ -868,9 +879,9 @@ async function loadTripsData(forceRefresh = false) {
         return;
     }
 
-    if (USE_FIREBASE && window.fbDbAPI) {
+    if (USE_FIREBASE && window.fbDb) {
         try {
-            const res = await fbDbAPI.getTrips();
+            const res = await window.fbDbAPI.getTrips();
             if (res.success && res.data?.length) {
                 state.cache.trips = res.data;
                 state.activeTrips = res.data;
@@ -991,14 +1002,14 @@ window.editTrip = async function(tripId) {
 
     if (formValues) {
         try {
-            if (USE_FIREBASE && window.fbWriteAPI) {
-                const res = await fbWriteAPI.updateTrip(formValues);
+            if (USE_FIREBASE && window.fbDb) {
+                const res = await window.fbWriteAPI.updateTrip(formValues);
                 if (res.success) {
                     Swal.fire({ icon: 'success', title: 'تم التحديث', text: res.message, timer: 2000, showConfirmButton: false });
                     loadTripsData(true); refreshDashboard();
                     return;
                 }
-                throw new Error(res.message);
+                console.warn('Firebase write failed, falling to Apps Script:', res.message);
             }
             const response = await callBackend("updateTrip", formValues);
             Swal.fire({ icon: 'success', title: 'تم التحديث', text: response.message || 'تم تحديث الرحلة بنجاح', timer: 2000, showConfirmButton: false });
@@ -1032,8 +1043,8 @@ window.triggerSettlement = async function(tripId, currentVersion) {
     let driverName = lookupDriverName(driverId);
     try {
         let res;
-        if (USE_FIREBASE && window.fbDbAPI) {
-            const fbRes = await fbDbAPI.getDrivers();
+        if (USE_FIREBASE && window.fbDb) {
+            const fbRes = await window.fbDbAPI.getDrivers();
             res = { data: fbRes.success ? fbRes.data : [] };
         } else {
             res = await callBackend("getDriversList");
@@ -1138,15 +1149,11 @@ window.triggerSettlement = async function(tripId, currentVersion) {
     try {
         // 1) تسجيل المصاريف الجديدة (كل مصروف بيتخصم من عهدة السائق)
         for (const row of rows) {
-            if (USE_FIREBASE && window.fbWriteAPI) {
-                const r = await fbWriteAPI.addExpense({
-                    Trip_ID: tripId,
-                    Driver_ID: driverId,
-                    Vehicle_ID: vehicleId,
-                    Expense_Category: row.category,
-                    Amount: row.amount,
-                    Fuel_Liters: row.liters || 0,
-                    Fuel_Price: fuelPrice
+            if (USE_FIREBASE && window.fbDb) {
+                const r = await window.fbWriteAPI.addExpense({
+                    category: row.category,
+                    amount: row.amount,
+                    description: `تسوية رحلة ${tripId}`
                 });
                 if (!r.success) throw new Error(r.message);
             } else {
@@ -1163,8 +1170,8 @@ window.triggerSettlement = async function(tripId, currentVersion) {
         }
 
         // 2) التصفية والإغلاق على العهدة الفعلية المتبقّية
-        if (USE_FIREBASE && window.fbWriteAPI) {
-            const res = await fbWriteAPI.updateTripStatus(tripId, 'CLOSED', currentVersion);
+        if (USE_FIREBASE && window.fbDb) {
+            const res = await window.fbWriteAPI.updateTripStatus(tripId, 'CLOSED', currentVersion);
             if (res.success) {
                 Swal.fire({
                     icon: 'success',
@@ -1177,7 +1184,7 @@ window.triggerSettlement = async function(tripId, currentVersion) {
                 refreshDashboard();
                 return;
             }
-            throw new Error(res.message);
+            console.warn('Firebase write failed, falling to Apps Script:', res.message);
         }
         const response = await callBackend("settleTripFinancials", {
             Trip_ID: tripId,
@@ -1234,15 +1241,15 @@ async function handleCreateTripSubmit(e) {
     };
 
     try {
-        if (USE_FIREBASE && window.fbWriteAPI) {
-            const res = await fbWriteAPI.createTrip(params);
+        if (USE_FIREBASE && window.fbDb) {
+            const res = await window.fbWriteAPI.createTrip(params);
             if (res.success) {
                 Swal.fire({ icon: 'success', title: 'تم بث الرحلة', text: `المعرف: ${res.trip_id}` });
                 document.getElementById("form-create-trip").reset();
                 loadTripsData(true); refreshDashboard();
                 return;
             }
-            throw new Error(res.message);
+            console.warn('Firebase write failed, falling to Apps Script:', res.message);
         }
         const response = await callBackend("createTrip", params);
         Swal.fire({ icon: 'success', title: 'تم البث', text: `المعرف: ${response.trip_id}` });
@@ -1268,9 +1275,9 @@ async function loadExpensesData(forceRefresh = false) {
         return;
     }
 
-    if (USE_FIREBASE && window.fbDbAPI) {
+    if (USE_FIREBASE && window.fbDb) {
         try {
-            const res = await fbDbAPI.getExpenses();
+            const res = await window.fbDbAPI.getExpenses();
             if (res.success && res.data) {
                 expensesCache = res.data;
                 renderExpensesTable(res.data);
@@ -1439,15 +1446,15 @@ async function handleExpenseDelete(expenseId) {
     if (!confirm.isConfirmed) return;
     
     try {
-        if (USE_FIREBASE && window.fbWriteAPI) {
-            const res = await fbWriteAPI.deleteExpense(expenseId);
+        if (USE_FIREBASE && window.fbDb) {
+            const res = await window.fbWriteAPI.deleteExpense(expenseId);
             if (res.success) {
                 Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
                 loadExpensesData(true);
                 refreshDashboard();
                 return;
             }
-            throw new Error(res.message);
+            console.warn('Firebase write failed, falling to Apps Script:', res.message);
         }
         await callBackend("deleteExpense", { Expense_ID: expenseId });
         Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
@@ -1489,8 +1496,8 @@ async function handleAddExpenseSubmit(e) {
     try {
         const editId = document.getElementById("expense-edit-id")?.value;
         if (editId) {
-            if (USE_FIREBASE && window.fbWriteAPI) {
-                const res = await fbWriteAPI.updateExpense({
+            if (USE_FIREBASE && window.fbDb) {
+                const res = await window.fbWriteAPI.updateExpense({
                     expense_id: editId,
                     category: document.getElementById('expense-category').value,
                     description: document.getElementById('expense-description').value.trim(),
@@ -1502,15 +1509,15 @@ async function handleAddExpenseSubmit(e) {
                     loadExpensesData(true); refreshDashboard();
                     return;
                 }
-                throw new Error(res.message);
+                console.warn('Firebase write failed, falling to Apps Script:', res.message);
             }
             params.Expense_ID = editId;
             await callBackend("updateExpense", params);
             Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
             cancelExpenseEdit();
         } else {
-            if (USE_FIREBASE && window.fbWriteAPI) {
-                const res = await fbWriteAPI.addExpense({
+            if (USE_FIREBASE && window.fbDb) {
+                const res = await window.fbWriteAPI.addExpense({
                     category: document.getElementById('expense-category').value,
                     description: document.getElementById('expense-description').value,
                     amount: document.getElementById('expense-amount').value,
@@ -1525,7 +1532,7 @@ async function handleAddExpenseSubmit(e) {
                     loadExpensesData(true); refreshDashboard();
                     return;
                 }
-                throw new Error(res.message);
+                console.warn('Firebase write failed, falling to Apps Script:', res.message);
             }
             await callBackend("addExpense", params);
             Swal.fire({ icon: 'success', title: 'تم الحفظ', timer: 1500, showConfirmButton: false });
@@ -1565,9 +1572,9 @@ function handleFileProcessing(e) {
 let fuelBalanceCache = null;
 let fuelTxCache = null;
 async function loadFuelData() {
-    if (USE_FIREBASE && window.fbDbAPI) {
+    if (USE_FIREBASE && window.fbDb) {
         try {
-            const res = await fbDbAPI.getFuelBalance();
+            const res = await window.fbDbAPI.getFuelBalance();
             if (res.success) {
                 fuelBalanceCache = res.data;
                 animateCounter(document.getElementById("fuel-current-balance"), res.data.current_balance || 0, ' ج.م');
@@ -1591,9 +1598,9 @@ async function loadFuelData() {
 }
 
 async function loadFuelTransactions() {
-    if (USE_FIREBASE && window.fbDbAPI) {
+    if (USE_FIREBASE && window.fbDb) {
         try {
-            const res = await fbDbAPI.getFuelTransactions();
+            const res = await window.fbDbAPI.getFuelTransactions();
             if (res.success) {
                 fuelTxCache = res.data;
                 renderFuelTransactions(res.data);
@@ -1683,9 +1690,9 @@ async function loadMaintenanceData(forceRefresh = false) {
         return;
     }
 
-    if (USE_FIREBASE && window.fbDbAPI) {
+    if (USE_FIREBASE && window.fbDb) {
         try {
-            const res = await fbDbAPI.getMaintenance();
+            const res = await window.fbDbAPI.getMaintenance();
             if (res.success && res.data) {
                 state.cache.maintenance = res.data;
                 renderMaintenanceTable(res.data);
@@ -1901,15 +1908,15 @@ async function handleAddFuelBalance() {
 
     if (amount && parseFloat(amount) > 0) {
         try {
-            if (USE_FIREBASE && window.fbWriteAPI) {
-                const res = await fbWriteAPI.addFuelBalance(amount);
+            if (USE_FIREBASE && window.fbDb) {
+                const res = await window.fbWriteAPI.addFuelBalance(amount);
                 if (res.success) {
                     Swal.fire({ icon: 'success', title: 'تم الإضافة', text: res.message, timer: 2000, showConfirmButton: false });
                     loadFuelData();
                     refreshDashboard();
                     return;
                 }
-                throw new Error(res.message);
+                console.warn('Firebase write failed, falling to Apps Script:', res.message);
             }
             const response = await callBackend("addFuelBalance", { Amount: amount });
             Swal.fire({ icon: 'success', title: 'تم الإضافة', text: response.message, timer: 2000, showConfirmButton: false });
@@ -1935,14 +1942,14 @@ async function handleUpdateFuelPrice() {
 
     if (price && parseFloat(price) > 0) {
         try {
-            if (USE_FIREBASE && window.fbWriteAPI) {
-                await fbDb.collection('settings').doc('fuel').update({
-                    fuel_price_per_liter: parseFloat(price),
-                    last_updated: new Date().toISOString()
-                });
-                Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 2000, showConfirmButton: false });
-                loadFuelData();
-                return;
+            if (USE_FIREBASE && window.fbDb) {
+                const res = await window.fbWriteAPI.updateFuelPrice(price);
+                if (res.success) {
+                    Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 2000, showConfirmButton: false });
+                    loadFuelData();
+                    return;
+                }
+                console.warn('Firebase update failed, falling to Apps Script:', res.message);
             }
             const response = await callBackend("updateFuelPrice", { Fuel_Price: price });
             Swal.fire({ icon: 'success', title: 'تم التحديث', text: response.message, timer: 2000, showConfirmButton: false });
@@ -1963,9 +1970,9 @@ async function loadVehiclesData(forceRefresh = false) {
         return;
     }
 
-    if (USE_FIREBASE && window.fbDbAPI) {
+    if (USE_FIREBASE && window.fbDb) {
         try {
-            const res = await fbDbAPI.getVehicles();
+            const res = await window.fbDbAPI.getVehicles();
             if (res.success && res.data?.length) {
                 state.cache.vehicles = res.data;
                 renderVehiclesTable(res.data);
@@ -2054,14 +2061,14 @@ async function handleAddVehicle() {
 
     if (formValues && formValues.Plate_Number && formValues.Model) {
         try {
-            if (USE_FIREBASE && window.fbWriteAPI) {
-                const res = await fbWriteAPI.createVehicle(formValues);
+            if (USE_FIREBASE && window.fbDb) {
+                const res = await window.fbWriteAPI.createVehicle(formValues);
                 if (res.success) {
                     Swal.fire({ icon: 'success', title: 'تمت الإضافة', timer: 1500, showConfirmButton: false });
                     loadVehiclesData(true);
                     return;
                 }
-                throw new Error(res.message);
+                console.warn('Firebase write failed, falling to Apps Script:', res.message);
             }
             await callBackend("createVehicle", formValues);
             Swal.fire({ icon: 'success', title: 'تمت الإضافة', timer: 1500, showConfirmButton: false });
@@ -2110,14 +2117,14 @@ window.editVehicle = async function(vehicleId) {
 
     if (formValues) {
         try {
-            if (USE_FIREBASE && window.fbWriteAPI) {
-                const res = await fbWriteAPI.updateVehicle(formValues);
+            if (USE_FIREBASE && window.fbDb) {
+                const res = await window.fbWriteAPI.updateVehicle(formValues);
                 if (res.success) {
                     Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
                     loadVehiclesData(true);
                     return;
                 }
-                throw new Error(res.message);
+                console.warn('Firebase write failed, falling to Apps Script:', res.message);
             }
             await callBackend("updateVehicle", formValues);
             Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
@@ -2140,14 +2147,14 @@ window.deleteVehicle = async function(vehicleId) {
     if (!confirm.isConfirmed) return;
 
     try {
-        if (USE_FIREBASE && window.fbWriteAPI) {
-            const res = await fbWriteAPI.deleteVehicle(vehicleId);
+        if (USE_FIREBASE && window.fbDb) {
+            const res = await window.fbWriteAPI.deleteVehicle(vehicleId);
             if (res.success) {
                 Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
                 loadVehiclesData(true);
                 return;
             }
-            throw new Error(res.message);
+            console.warn('Firebase write failed, falling to Apps Script:', res.message);
         }
         await callBackend("deleteVehicle", { Vehicle_ID: vehicleId });
         Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
@@ -2167,9 +2174,9 @@ async function loadDriversData(forceRefresh = false) {
         return;
     }
 
-    if (USE_FIREBASE && window.fbDbAPI) {
+    if (USE_FIREBASE && window.fbDb) {
         try {
-            const res = await fbDbAPI.getDrivers();
+            const res = await window.fbDbAPI.getDrivers();
             if (res.success && res.data?.length) {
                 state.cache.drivers = res.data;
                 renderDriversTable(res.data);
@@ -2256,14 +2263,14 @@ async function handleAddDriver() {
 
     if (formValues && formValues.Full_Name && formValues.Phone) {
         try {
-            if (USE_FIREBASE && window.fbWriteAPI) {
-                const res = await fbWriteAPI.createDriver(formValues);
+            if (USE_FIREBASE && window.fbDb) {
+                const res = await window.fbWriteAPI.createDriver(formValues);
                 if (res.success) {
                     Swal.fire({ icon: 'success', title: 'تمت الإضافة', timer: 1500, showConfirmButton: false });
                     loadDriversData(true);
                     return;
                 }
-                throw new Error(res.message);
+                console.warn('Firebase write failed, falling to Apps Script:', res.message);
             }
             await callBackend("createDriver", formValues);
             Swal.fire({ icon: 'success', title: 'تمت الإضافة', timer: 1500, showConfirmButton: false });
@@ -2309,14 +2316,14 @@ window.editDriver = async function(driverId) {
 
     if (formValues) {
         try {
-            if (USE_FIREBASE && window.fbWriteAPI) {
-                const res = await fbWriteAPI.updateDriver(formValues);
+            if (USE_FIREBASE && window.fbDb) {
+                const res = await window.fbWriteAPI.updateDriver(formValues);
                 if (res.success) {
                     Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
                     loadDriversData(true);
                     return;
                 }
-                throw new Error(res.message);
+                console.warn('Firebase write failed, falling to Apps Script:', res.message);
             }
             await callBackend("updateDriverData", formValues);
             Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
@@ -2339,14 +2346,14 @@ window.deleteDriver = async function(driverId) {
     if (!confirm.isConfirmed) return;
 
     try {
-        if (USE_FIREBASE && window.fbWriteAPI) {
-            const res = await fbWriteAPI.deleteDriver(driverId);
+        if (USE_FIREBASE && window.fbDb) {
+            const res = await window.fbWriteAPI.deleteDriver(driverId);
             if (res.success) {
                 Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
                 loadDriversData(true);
                 return;
             }
-            throw new Error(res.message);
+            console.warn('Firebase write failed, falling to Apps Script:', res.message);
         }
         await callBackend("deleteDriver", { Driver_ID: driverId });
         Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
@@ -2366,9 +2373,9 @@ async function loadClientsData(forceRefresh = false) {
         return;
     }
 
-    if (USE_FIREBASE && window.fbDbAPI) {
+    if (USE_FIREBASE && window.fbDb) {
         try {
-            const res = await fbDbAPI.getClients();
+            const res = await window.fbDbAPI.getClients();
             if (res.success && res.data?.length) {
                 state.cache.clients = res.data;
                 renderClientsTable(res.data);
@@ -2454,14 +2461,14 @@ async function handleAddClient() {
 
     if (formValues && formValues.Client_Name && formValues.Phone) {
         try {
-            if (USE_FIREBASE && window.fbWriteAPI) {
-                const res = await fbWriteAPI.createClient(formValues);
+            if (USE_FIREBASE && window.fbDb) {
+                const res = await window.fbWriteAPI.createClient(formValues);
                 if (res.success) {
                     Swal.fire({ icon: 'success', title: 'تمت الإضافة', timer: 1500, showConfirmButton: false });
                     loadClientsData(true);
                     return;
                 }
-                throw new Error(res.message);
+                console.warn('Firebase write failed, falling to Apps Script:', res.message);
             }
             await callBackend("createClient", formValues);
             Swal.fire({ icon: 'success', title: 'تمت الإضافة', timer: 1500, showConfirmButton: false });
@@ -2504,14 +2511,14 @@ window.editClient = async function(clientId) {
 
     if (formValues) {
         try {
-            if (USE_FIREBASE && window.fbWriteAPI) {
-                const res = await fbWriteAPI.updateClient(formValues);
+            if (USE_FIREBASE && window.fbDb) {
+                const res = await window.fbWriteAPI.updateClient(formValues);
                 if (res.success) {
                     Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
                     loadClientsData(true);
                     return;
                 }
-                throw new Error(res.message);
+                console.warn('Firebase write failed, falling to Apps Script:', res.message);
             }
             await callBackend("updateClient", formValues);
             Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
@@ -2534,14 +2541,14 @@ window.deleteClient = async function(clientId) {
     if (!confirm.isConfirmed) return;
 
     try {
-        if (USE_FIREBASE && window.fbWriteAPI) {
-            const res = await fbWriteAPI.deleteClient(clientId);
+        if (USE_FIREBASE && window.fbDb) {
+            const res = await window.fbWriteAPI.deleteClient(clientId);
             if (res.success) {
                 Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
                 loadClientsData(true);
                 return;
             }
-            throw new Error(res.message);
+            console.warn('Firebase write failed, falling to Apps Script:', res.message);
         }
         await callBackend("deleteClient", { Client_ID: clientId });
         Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
@@ -2568,9 +2575,9 @@ async function loadBalanceData(forceRefresh = false) {
         return;
     }
 
-    if (USE_FIREBASE && window.fbDbAPI && !filterUserId) {
+    if (USE_FIREBASE && window.fbDb && !filterUserId) {
         try {
-            const res = await fbDbAPI.getBalanceTransactions();
+            const res = await window.fbDbAPI.getBalanceTransactions();
             if (res.success) {
                 state.cache.balanceTransactions = res.data;
                 renderBalanceTable(res.data);
@@ -2625,9 +2632,9 @@ async function populateBalanceUserFilter() {
     const select = document.getElementById("balance-filter-user");
     if (!select || select.dataset.loaded === "true") return;
 
-    if (USE_FIREBASE && window.fbDbAPI) {
+    if (USE_FIREBASE && window.fbDb) {
         try {
-            const res = await fbDbAPI.getUsers();
+            const res = await window.fbDbAPI.getUsers();
             if (res.success && res.data) {
                 const select = document.getElementById("balance-filter-user");
                 if (!select) return;
@@ -2716,9 +2723,9 @@ async function handleAddBalance() {
         confirmButtonText: 'إيداع',
         cancelButtonText: 'إلغاء',
         didOpen: async () => {
-            if (USE_FIREBASE && window.fbDbAPI) {
+            if (USE_FIREBASE && window.fbDb) {
                 try {
-                    const res = await fbDbAPI.getUsers();
+                    const res = await window.fbDbAPI.getUsers();
                     if (res.success && res.data) {
                         const select = document.getElementById("add-balance-user");
                         if (select) {
@@ -2768,15 +2775,15 @@ async function handleAddBalance() {
 
     if (formValues) {
         try {
-            if (USE_FIREBASE && window.fbWriteAPI) {
-                const res = await fbWriteAPI.addBalance(formValues);
+            if (USE_FIREBASE && window.fbDb) {
+                const res = await window.fbWriteAPI.addBalance(formValues);
                 if (res.success) {
                     Swal.fire({ icon: 'success', title: 'تم الإيداع', text: res.message, timer: 2000, showConfirmButton: false });
                     loadBalanceData(true);
                     refreshDashboard();
                     return;
                 }
-                throw new Error(res.message);
+                console.warn('Firebase write failed, falling to Apps Script:', res.message);
             }
             const response = await callBackend("addBalance", formValues);
             Swal.fire({ icon: 'success', title: 'تم الإيداع', text: response.message, timer: 2000, showConfirmButton: false });
@@ -2812,9 +2819,9 @@ async function handleTransferBalance() {
         confirmButtonText: 'تحويل',
         cancelButtonText: 'إلغاء',
         didOpen: async () => {
-            if (USE_FIREBASE && window.fbDbAPI) {
+            if (USE_FIREBASE && window.fbDb) {
                 try {
-                    const res = await fbDbAPI.getUsers();
+                    const res = await window.fbDbAPI.getUsers();
                     if (res.success && res.data) {
                         const selectFrom = document.getElementById("transfer-from-user");
                         const selectTo = document.getElementById("transfer-to-user");
@@ -2874,15 +2881,15 @@ async function handleTransferBalance() {
 
     if (formValues) {
         try {
-            if (USE_FIREBASE && window.fbWriteAPI) {
-                const res = await fbWriteAPI.transferBalance(formValues);
+            if (USE_FIREBASE && window.fbDb) {
+                const res = await window.fbWriteAPI.transferBalance(formValues);
                 if (res.success) {
                     Swal.fire({ icon: 'success', title: 'تم التحويل', text: res.message, timer: 2000, showConfirmButton: false });
                     loadBalanceData(true);
                     refreshDashboard();
                     return;
                 }
-                throw new Error(res.message);
+                console.warn('Firebase write failed, falling to Apps Script:', res.message);
             }
             const response = await callBackend("transferBalance", formValues);
             Swal.fire({ icon: 'success', title: 'تم التحويل', text: response.message, timer: 2000, showConfirmButton: false });
@@ -2898,9 +2905,9 @@ async function handleTransferBalance() {
 async function loadNotificationsData() {
     const container = document.getElementById("notifications-list");
     if (!container) return;
-    if (USE_FIREBASE && window.fbDbAPI) {
+    if (USE_FIREBASE && window.fbDb) {
         try {
-            const res = await fbDbAPI.getNotifications();
+            const res = await window.fbDbAPI.getNotifications();
             if (res.success && res.data) {
                 state.cache.notifications = res.data;
                 renderNotifications(res.data);
@@ -2963,14 +2970,14 @@ function renderNotifications(notifications) {
 
 window.markNotificationRead = async function(notificationId) {
     try {
-        if (USE_FIREBASE && window.fbWriteAPI) {
-            const res = await fbWriteAPI.markNotificationRead(notificationId);
+        if (USE_FIREBASE && window.fbDb) {
+            const res = await window.fbWriteAPI.markNotificationRead(notificationId);
             if (res.success) {
                 loadNotificationsData();
                 refreshDashboard();
                 return;
             }
-            throw new Error(res.message);
+            console.warn('Firebase write failed, falling to Apps Script:', res.message);
         }
         await callBackend("markNotificationRead", { Notification_ID: notificationId });
         loadNotificationsData();
@@ -2982,13 +2989,13 @@ window.markNotificationRead = async function(notificationId) {
 
 window.deleteNotification = async function(notificationId) {
     try {
-        if (USE_FIREBASE && window.fbWriteAPI) {
-            const res = await fbWriteAPI.deleteNotification(notificationId);
+        if (USE_FIREBASE && window.fbDb) {
+            const res = await window.fbWriteAPI.deleteNotification(notificationId);
             if (res.success) {
                 loadNotificationsData();
                 return;
             }
-            throw new Error(res.message);
+            console.warn('Firebase write failed, falling to Apps Script:', res.message);
         }
         await callBackend("deleteNotification", { Notification_ID: notificationId });
         loadNotificationsData();
@@ -2999,15 +3006,15 @@ window.deleteNotification = async function(notificationId) {
 
 async function handleMarkAllRead() {
     try {
-        if (USE_FIREBASE && window.fbWriteAPI) {
-            const res = await fbWriteAPI.markAllNotificationsRead();
+        if (USE_FIREBASE && window.fbDb) {
+            const res = await window.fbWriteAPI.markAllNotificationsRead();
             if (res.success) {
                 loadNotificationsData();
                 refreshDashboard();
                 Swal.fire({ icon: 'success', title: 'تم تحديد الكل كمقروء', timer: 1500, showConfirmButton: false });
                 return;
             }
-            throw new Error(res.message);
+            console.warn('Firebase write failed, falling to Apps Script:', res.message);
         }
         await callBackend("markAllNotificationsRead", {});
         loadNotificationsData();
@@ -3028,9 +3035,9 @@ async function loadUsersData(forceRefresh = false) {
         return;
     }
 
-    if (USE_FIREBASE && window.fbDbAPI) {
+    if (USE_FIREBASE && window.fbDb) {
         try {
-            const res = await fbDbAPI.getUsers();
+            const res = await window.fbDbAPI.getUsers();
             if (res.success && res.data) {
                 state.cache.users = res.data;
                 renderUsersTable(res.data);
@@ -3123,14 +3130,14 @@ window.editUserRole = async function(userId, currentRole) {
 
     if (newRole && newRole !== currentRole) {
         try {
-            if (USE_FIREBASE && window.fbWriteAPI) {
-                const res = await fbWriteAPI.updateUserRole({ Target_User_ID: userId, New_Role: newRole });
+            if (USE_FIREBASE && window.fbDb) {
+                const res = await window.fbWriteAPI.updateUserRole({ Target_User_ID: userId, New_Role: newRole });
                 if (res.success) {
                     Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
                     loadUsersData(true);
                     return;
                 }
-                throw new Error(res.message);
+                console.warn('Firebase write failed, falling to Apps Script:', res.message);
             }
             await callBackend("updateUserRole", {
                 Target_User_ID: userId,
@@ -3196,8 +3203,8 @@ async function handleCreateUserSubmit(e) {
     setButtonLoading(submitBtn, true, "جاري الإنشاء...");
 
     try {
-        if (USE_FIREBASE && window.fbWriteAPI) {
-            const res = await fbWriteAPI.createUser({
+        if (USE_FIREBASE && window.fbDb) {
+            const res = await window.fbWriteAPI.createUser({
                 Full_Name: fullName,
                 New_Username: username,
                 New_Password: password,
@@ -3210,7 +3217,7 @@ async function handleCreateUserSubmit(e) {
                 loadUsersData(true);
                 return;
             }
-            throw new Error(res.message);
+            console.warn('Firebase write failed, falling to Apps Script:', res.message);
         }
         await callBackend("createUser", {
             Full_Name: fullName,
@@ -3248,14 +3255,14 @@ window.toggleUserStatus = async function(userId, currentStatus) {
     if (!confirmation.isConfirmed) return;
 
     try {
-        if (USE_FIREBASE && window.fbWriteAPI) {
-            const res = await fbWriteAPI.toggleUserStatus({ Target_User_ID: userId, New_Status: newStatus });
+        if (USE_FIREBASE && window.fbDb) {
+            const res = await window.fbWriteAPI.toggleUserStatus({ Target_User_ID: userId, New_Status: newStatus });
             if (res.success) {
                 Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
                 loadUsersData(true);
                 return;
             }
-            throw new Error(res.message);
+            console.warn('Firebase write failed, falling to Apps Script:', res.message);
         }
         await callBackend("toggleUserStatus", {
             Target_User_ID: userId,
@@ -3283,14 +3290,14 @@ window.deleteUser = async function(userId) {
     if (!confirmation.isConfirmed) return;
 
     try {
-        if (USE_FIREBASE && window.fbWriteAPI) {
-            const res = await fbWriteAPI.deleteUser(userId);
+        if (USE_FIREBASE && window.fbDb) {
+            const res = await window.fbWriteAPI.deleteUser(userId);
             if (res.success) {
                 Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
                 loadUsersData(true);
                 return;
             }
-            throw new Error(res.message);
+            console.warn('Firebase write failed, falling to Apps Script:', res.message);
         }
         await callBackend("deleteUser", { Target_User_ID: userId });
         Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });

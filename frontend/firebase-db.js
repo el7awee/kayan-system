@@ -1,5 +1,10 @@
 // ====== دوال مساعدة ======
 
+function _col(name) {
+  if (!fbDb) throw new Error('Firebase غير مهيأ');
+  return fbDb.collection(name);
+}
+
 function lowercaseKeys(doc) {
   if (!doc || typeof doc !== 'object') return doc;
   if (Array.isArray(doc)) return doc.map(lowercaseKeys);
@@ -12,7 +17,7 @@ function lowercaseKeys(doc) {
 
 async function getAllFromCollection(collectionName) {
   try {
-    const snapshot = await fbDb.collection(collectionName).get();
+    const snapshot = await _col(collectionName).get();
     const docs = [];
     snapshot.forEach(doc => {
       const data = lowercaseKeys(doc.data());
@@ -27,7 +32,7 @@ async function getAllFromCollection(collectionName) {
 }
 
 function listenToCollection(collectionName, callback) {
-  return fbDb.collection(collectionName).onSnapshot(snapshot => {
+  return _col(collectionName).onSnapshot(snapshot => {
     const docs = [];
     snapshot.forEach(doc => {
       const data = lowercaseKeys(doc.data());
@@ -94,12 +99,12 @@ const fbDbAPI = {
 
   getDashboard: async () => {
     let trips = [], drivers = [], vehicles = [], clients = [], expenses = [], fuel = [];
-    try { const s = await fbDb.collection('trips').get(); s.forEach(d => trips.push(lowercaseKeys(d.data()))); } catch (e) {}
-    try { const s = await fbDb.collection('drivers').get(); s.forEach(d => drivers.push(lowercaseKeys(d.data()))); } catch (e) {}
-    try { const s = await fbDb.collection('vehicles').get(); s.forEach(d => vehicles.push(lowercaseKeys(d.data()))); } catch (e) {}
-    try { const s = await fbDb.collection('clients').get(); s.forEach(d => clients.push(lowercaseKeys(d.data()))); } catch (e) {}
-    try { const s = await fbDb.collection('expenses').get(); s.forEach(d => expenses.push(lowercaseKeys(d.data()))); } catch (e) {}
-    try { const s = await fbDb.collection('fuelBalance').orderBy('last_updated', 'desc').limit(1).get(); s.forEach(d => fuel.push(lowercaseKeys(d.data()))); } catch (e) {}
+    try { const s = await _col('trips').get(); s.forEach(d => trips.push(lowercaseKeys(d.data()))); } catch (e) {}
+    try { const s = await _col('drivers').get(); s.forEach(d => drivers.push(lowercaseKeys(d.data()))); } catch (e) {}
+    try { const s = await _col('vehicles').get(); s.forEach(d => vehicles.push(lowercaseKeys(d.data()))); } catch (e) {}
+    try { const s = await _col('clients').get(); s.forEach(d => clients.push(lowercaseKeys(d.data()))); } catch (e) {}
+    try { const s = await _col('expenses').get(); s.forEach(d => expenses.push(lowercaseKeys(d.data()))); } catch (e) {}
+    try { const s = await _col('fuelBalance').orderBy('last_updated', 'desc').limit(1).get(); s.forEach(d => fuel.push(lowercaseKeys(d.data()))); } catch (e) {}
 
     const activeTrips = trips.filter(t => t.trip_status === 'OPEN');
     const totalExpenses = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
@@ -160,7 +165,7 @@ const fbWriteAPI = {
     }
     const doc = {
       Expense_ID: expenseId,
-      Category: category,
+      Category: category || '',
       Description: description || '',
       Amount: parseFloat(amount) || 0,
       Receipt_URL: receiptURL,
@@ -169,12 +174,12 @@ const fbWriteAPI = {
       Created_At: new Date().toISOString(),
       Updated_At: new Date().toISOString()
     };
-    await fbDb.collection('expenses').add(doc);
+    await _col('expenses').add(doc);
     return { success: true, message: 'تم إضافة المصروف', expense_id: expenseId };
   },
 
   updateExpense: async ({ expense_id, category, description, amount }) => {
-    const snap = await fbDb.collection('expenses').where('Expense_ID', '==', expense_id).get();
+    const snap = await _col('expenses').where('Expense_ID', '==', expense_id).get();
     if (snap.empty) return { success: false, message: 'المصروف غير موجود' };
     await snap.docs[0].ref.update({
       Category: category,
@@ -186,7 +191,7 @@ const fbWriteAPI = {
   },
 
   deleteExpense: async (expenseId) => {
-    const snap = await fbDb.collection('expenses').where('Expense_ID', '==', expenseId).get();
+    const snap = await _col('expenses').where('Expense_ID', '==', expenseId).get();
     if (snap.empty) return { success: false, message: 'المصروف غير موجود' };
     await snap.docs[0].ref.delete();
     return { success: true, message: 'تم حذف المصروف' };
@@ -215,12 +220,12 @@ const fbWriteAPI = {
       Created_At: new Date().toISOString(),
       Updated_At: new Date().toISOString()
     };
-    await fbDb.collection('trips').add(doc);
+    await _col('trips').add(doc);
     return { success: true, message: 'تم بث الرحلة', trip_id: tripId };
   },
 
   updateTrip: async (data) => {
-    const snap = await fbDb.collection('trips').where('Trip_ID', '==', data.Trip_ID).get();
+    const snap = await _col('trips').where('Trip_ID', '==', data.Trip_ID).get();
     if (snap.empty) return { success: false, message: 'الرحلة غير موجودة' };
     const trip = snap.docs[0];
     const existing = trip.data();
@@ -239,7 +244,7 @@ const fbWriteAPI = {
   },
 
   updateTripStatus: async (tripId, newStatus, currentVersion) => {
-    const snap = await fbDb.collection('trips').where('Trip_ID', '==', tripId).get();
+    const snap = await _col('trips').where('Trip_ID', '==', tripId).get();
     if (snap.empty) return { success: false, message: 'الرحلة غير موجودة' };
     const trip = snap.docs[0];
     const existing = trip.data();
@@ -264,12 +269,12 @@ const fbWriteAPI = {
       Created_At: new Date().toISOString(),
       Updated_At: new Date().toISOString()
     };
-    await fbDb.collection('vehicles').add(doc);
+    await _col('vehicles').add(doc);
     return { success: true, message: 'تمت الإضافة', vehicle_id: vehicleId };
   },
 
   updateVehicle: async (data) => {
-    const snap = await fbDb.collection('vehicles').where('Vehicle_ID', '==', data.Vehicle_ID).get();
+    const snap = await _col('vehicles').where('Vehicle_ID', '==', data.Vehicle_ID).get();
     if (snap.empty) return { success: false, message: 'العربية غير موجودة' };
     await snap.docs[0].ref.update({
       Plate_Number: data.Plate_Number,
@@ -283,7 +288,7 @@ const fbWriteAPI = {
   },
 
   deleteVehicle: async (vehicleId) => {
-    const snap = await fbDb.collection('vehicles').where('Vehicle_ID', '==', vehicleId).get();
+    const snap = await _col('vehicles').where('Vehicle_ID', '==', vehicleId).get();
     if (snap.empty) return { success: false, message: 'العربية غير موجودة' };
     await snap.docs[0].ref.update({ Status: 'INACTIVE', Updated_At: new Date().toISOString() });
     return { success: true, message: 'تم الحذف' };
@@ -304,12 +309,12 @@ const fbWriteAPI = {
       Created_At: new Date().toISOString(),
       Updated_At: new Date().toISOString()
     };
-    await fbDb.collection('drivers').add(doc);
+    await _col('drivers').add(doc);
     return { success: true, message: 'تمت الإضافة', driver_id: driverId };
   },
 
   updateDriver: async (data) => {
-    const snap = await fbDb.collection('drivers').where('Driver_ID', '==', data.Driver_ID).get();
+    const snap = await _col('drivers').where('Driver_ID', '==', data.Driver_ID).get();
     if (snap.empty) return { success: false, message: 'السائق غير موجود' };
     await snap.docs[0].ref.update({
       Full_Name: data.Full_Name,
@@ -322,7 +327,7 @@ const fbWriteAPI = {
   },
 
   deleteDriver: async (driverId) => {
-    const snap = await fbDb.collection('drivers').where('Driver_ID', '==', driverId).get();
+    const snap = await _col('drivers').where('Driver_ID', '==', driverId).get();
     if (snap.empty) return { success: false, message: 'السائق غير موجود' };
     await snap.docs[0].ref.update({ Status: 'INACTIVE', Updated_At: new Date().toISOString() });
     return { success: true, message: 'تم الحذف' };
@@ -341,12 +346,12 @@ const fbWriteAPI = {
       Created_At: new Date().toISOString(),
       Updated_At: new Date().toISOString()
     };
-    await fbDb.collection('clients').add(doc);
+    await _col('clients').add(doc);
     return { success: true, message: 'تمت الإضافة', client_id: clientId };
   },
 
   updateClient: async (data) => {
-    const snap = await fbDb.collection('clients').where('Client_ID', '==', data.Client_ID).get();
+    const snap = await _col('clients').where('Client_ID', '==', data.Client_ID).get();
     if (snap.empty) return { success: false, message: 'العميل غير موجود' };
     await snap.docs[0].ref.update({
       Client_Name: data.Client_Name,
@@ -358,7 +363,7 @@ const fbWriteAPI = {
   },
 
   deleteClient: async (clientId) => {
-    const snap = await fbDb.collection('clients').where('Client_ID', '==', clientId).get();
+    const snap = await _col('clients').where('Client_ID', '==', clientId).get();
     if (snap.empty) return { success: false, message: 'العميل غير موجود' };
     await snap.docs[0].ref.delete();
     return { success: true, message: 'تم الحذف' };
@@ -372,15 +377,15 @@ const fbWriteAPI = {
       Created_By: state.user?.id || 'SYSTEM',
       Created_At: new Date().toISOString()
     };
-    await fbDb.collection('fuelTransactions').add(doc);
+    await _col('fuelTransactions').add(doc);
     // تحدث الرصيد الحالي
-    const balSnap = await fbDb.collection('fuelBalance').orderBy('Last_Updated', 'desc').limit(1).get();
+    const balSnap = await _col('fuelBalance').orderBy('Last_Updated', 'desc').limit(1).get();
     let newBalance = parseFloat(amount) || 0;
     if (!balSnap.empty) {
       const current = balSnap.docs[0].data();
       newBalance = (parseFloat(current.Total_Balance_EGP) || 0) + (parseFloat(amount) || 0);
     }
-    await fbDb.collection('fuelBalance').add({
+    await _col('fuelBalance').add({
       Total_Balance_EGP: newBalance,
       Last_Updated: new Date().toISOString(),
       Updated_By: state.user?.id || 'SYSTEM'
@@ -402,12 +407,12 @@ const fbWriteAPI = {
       Created_At: new Date().toISOString(),
       Updated_At: new Date().toISOString()
     };
-    await fbDb.collection('maintenance').add(doc);
+    await _col('maintenance').add(doc);
     return { success: true, message: 'تمت الإضافة', maintenance_id: maintId };
   },
 
   deleteMaintenance: async (maintId) => {
-    const snap = await fbDb.collection('maintenance').where('Maintenance_ID', '==', maintId).get();
+    const snap = await _col('maintenance').where('Maintenance_ID', '==', maintId).get();
     if (snap.empty) return { success: false, message: 'غير موجود' };
     await snap.docs[0].ref.delete();
     return { success: true, message: 'تم الحذف' };
@@ -415,14 +420,14 @@ const fbWriteAPI = {
 
   // 🔔 الإشعارات
   markNotificationRead: async (notifId) => {
-    const snap = await fbDb.collection('notifications').where('Notification_ID', '==', notifId).get();
+    const snap = await _col('notifications').where('Notification_ID', '==', notifId).get();
     if (snap.empty) return { success: false };
     await snap.docs[0].ref.update({ Is_Read: true });
     return { success: true };
   },
 
   markAllNotificationsRead: async () => {
-    const snap = await fbDb.collection('notifications').where('Is_Read', '==', false).get();
+    const snap = await _col('notifications').where('Is_Read', '==', false).get();
     const batch = fbDb.batch();
     snap.forEach(d => batch.update(d.ref, { Is_Read: true }));
     await batch.commit();
@@ -430,7 +435,7 @@ const fbWriteAPI = {
   },
 
   deleteNotification: async (notifId) => {
-    const snap = await fbDb.collection('notifications').where('Notification_ID', '==', notifId).get();
+    const snap = await _col('notifications').where('Notification_ID', '==', notifId).get();
     if (snap.empty) return { success: false };
     await snap.docs[0].ref.delete();
     return { success: true };
@@ -448,7 +453,7 @@ const fbWriteAPI = {
       Created_By: state.user?.id || 'SYSTEM',
       Created_At: new Date().toISOString()
     };
-    await fbDb.collection('balanceTransactions').add(doc);
+    await _col('balanceTransactions').add(doc);
     return { success: true, message: 'تم الإيداع', transaction_id: txId };
   },
 
@@ -463,7 +468,7 @@ const fbWriteAPI = {
       Created_By: state.user?.id || 'SYSTEM',
       Created_At: new Date().toISOString()
     };
-    await fbDb.collection('balanceTransactions').add(doc);
+    await _col('balanceTransactions').add(doc);
     return { success: true, message: 'تم الصرف', transaction_id: txId };
   },
 
@@ -473,12 +478,12 @@ const fbWriteAPI = {
     const batch = fbDb.batch();
     const amt = Math.abs(parseFloat(amount) || 0);
     const now = new Date().toISOString();
-    batch.set(fbDb.collection('balanceTransactions').doc(), {
+    batch.set(_col('balanceTransactions').doc(), {
       Transaction_ID: txId1, User_ID: from_user_id, Amount: amt,
       Type: 'TRANSFER_OUT', Note: note || 'تحويل صادر',
       Target_User_ID: to_user_id, Created_By: state.user?.id || 'SYSTEM', Created_At: now
     });
-    batch.set(fbDb.collection('balanceTransactions').doc(), {
+    batch.set(_col('balanceTransactions').doc(), {
       Transaction_ID: txId2, User_ID: to_user_id, Amount: amt,
       Type: 'TRANSFER_IN', Note: note || 'تحويل وارد',
       Source_User_ID: from_user_id, Created_By: state.user?.id || 'SYSTEM', Created_At: now
@@ -490,48 +495,70 @@ const fbWriteAPI = {
   // 👥 المستخدمين
   createUser: async (data) => {
     const userId = genId('USR');
-    const email = `${data.Username}@kayan.system`;
+    const email = data.Email || `${data.New_Username || data.Username}@kayan.system`;
     let authUid = '';
     try {
-      const fbUser = await fbAuth.createUserWithEmailAndPassword(email, data.Password || 'Kayan@2026');
-      authUid = fbUser.user.uid;
+      if (fbAuth) {
+        const fbUser = await fbAuth.createUserWithEmailAndPassword(email, data.New_Password || data.Password || 'Kayan@2026');
+        authUid = fbUser.user.uid;
+      }
     } catch (e) { /* user may already exist in auth */ }
     const doc = {
       User_ID: userId,
       Full_Name: data.Full_Name,
-      Username: data.Username,
-      Role: data.Role || 'Operations',
+      Username: data.New_Username || data.Username,
+      Role: data.Assigned_Role || data.Role || 'Operations',
       Status: 'ACTIVE',
       Created_By: state.user?.id || 'SYSTEM',
       Created_At: new Date().toISOString()
     };
     if (authUid) { doc.auth_uid = authUid; doc.auth_email = email; }
-    await fbDb.collection('users').add(doc);
+    await _col('users').add(doc);
     return { success: true, message: 'تمت الإضافة', user_id: userId };
   },
 
-  toggleUserStatus: async (userId) => {
-    const snap = await fbDb.collection('users').where('User_ID', '==', userId).get();
+  toggleUserStatus: async ({ Target_User_ID: userId, New_Status: newStatus }) => {
+    const snap = await _col('users').where('User_ID', '==', userId).get();
     if (snap.empty) return { success: false, message: 'المستخدم غير موجود' };
     const user = snap.docs[0];
-    const newStatus = user.data().Status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-    await user.ref.update({ Status: newStatus });
+    const newStat = newStatus || (user.data().Status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE');
+    await user.ref.update({ Status: newStat });
     return { success: true, message: 'تم تغيير الحالة' };
   },
 
-  updateUserRole: async (userId, newRole) => {
-    const snap = await fbDb.collection('users').where('User_ID', '==', userId).get();
+  updateUserRole: async ({ Target_User_ID: userId, New_Role: newRole }) => {
+    const snap = await _col('users').where('User_ID', '==', userId).get();
     if (snap.empty) return { success: false, message: 'المستخدم غير موجود' };
     await snap.docs[0].ref.update({ Role: newRole });
     return { success: true, message: 'تم تحديث الصلاحية' };
   },
 
   deleteUser: async (userId) => {
-    const snap = await fbDb.collection('users').where('User_ID', '==', userId).get();
+    const snap = await _col('users').where('User_ID', '==', userId).get();
     if (snap.empty) return { success: false, message: 'المستخدم غير موجود' };
     await snap.docs[0].ref.update({ IsDeleted: true, Status: 'INACTIVE' });
     return { success: true, message: 'تم حذف المستخدم' };
+  },
+
+  updateFuelPrice: async (price) => {
+    await _col('settings').doc('fuel').update({
+      fuel_price_per_liter: parseFloat(price),
+      last_updated: new Date().toISOString()
+    });
+    return { success: true, message: 'تم تحديث سعر البنزين' };
   }
 };
 
-window.fbWriteAPI = fbWriteAPI;
+// Wrap all write functions with error handling (safe against null fbDb)
+const _safeWrite = {};
+Object.keys(fbWriteAPI).forEach(key => {
+  _safeWrite[key] = async (...args) => {
+    try {
+      return await fbWriteAPI[key](...args);
+    } catch (e) {
+      console.error(`fbWriteAPI.${key} error:`, e);
+      return { success: false, message: e.message || 'حدث خطأ في الاتصال بقاعدة البيانات' };
+    }
+  };
+});
+window.fbWriteAPI = _safeWrite;

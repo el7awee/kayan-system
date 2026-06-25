@@ -22,3 +22,7 @@ if (typeof firebase !== 'undefined') {
     console.warn('Firebase init failed:', e);
   }
 }
+
+window.fbAuth = fbAuth;
+window.fbDb = fbDb;
+window.fbStorage = fbStorage;
