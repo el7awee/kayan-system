@@ -272,6 +272,12 @@ function routeRequest(e, method, userId, userRole) {
       case 'deleteMaintenance':
         resultPayload = maintenanceService_deleteMaintenance(ss, e.parameter);
         break;
+      case 'getPermissions':
+        resultPayload = permissionService_getAll(ss);
+        break;
+      case 'savePermissions':
+        resultPayload = permissionService_save(ss, e);
+        break;
       case 'getDashboard':
         resultPayload = aggregateService_getDashboard(ss, e, realUserId);
         break;

@@ -634,19 +634,21 @@
         <!-- ========================================== -->
         <main class="flex-1 p-6 md:p-8 overflow-y-auto" style="background-color: var(--bg-primary);">
 
-            <!-- شريط الأدوات العلوي (هامبورجر + جرس + وضع) -->
-            <div class="flex items-center gap-1 mb-4">
-                <button id="btn-sidebar-toggle" class="md:hidden w-7 h-7 rounded-lg bg-secondary hover:bg-hover border border-border flex items-center justify-center text-xs transition me-auto" title="القائمة">
+            <!-- شريط الأدوات العلوي (هامبورجر + جرس + وضع + تحديث) -->
+            <div class="flex items-center justify-between mb-4">
+                <button id="btn-sidebar-toggle" class="md:hidden w-7 h-7 rounded-lg bg-secondary hover:bg-hover border border-border flex items-center justify-center text-xs transition" title="القائمة">
                     <i class="fa-solid fa-bars"></i>
                 </button>
-                <button id="btn-refresh-dashboard" class="text-xs bg-secondary hover:bg-hover px-2.5 py-1.5 rounded-lg border border-border transition flex items-center gap-1"><i class="fa-solid fa-rotate text-xs"></i></button>
-                <button id="btn-notif-bell" class="relative w-7 h-7 rounded-lg bg-secondary hover:bg-hover border border-border flex items-center justify-center text-xs transition" title="التنبيهات">
-                    <i class="fa-solid fa-bell text-amber-500"></i>
-                    <span id="bell-badge" class="absolute -top-1 -end-1 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[8px] font-bold flex items-center justify-center hidden">0</span>
-                </button>
-                <button id="btn-theme-toggle" class="w-7 h-7 rounded-lg bg-secondary hover:bg-hover border border-border flex items-center justify-center text-xs transition" title="تبديل الوضع">
-                    <i class="fa-solid fa-moon"></i>
-                </button>
+                <div class="flex items-center gap-1">
+                    <button id="btn-refresh-dashboard" class="text-xs bg-secondary hover:bg-hover px-2.5 py-1.5 rounded-lg border border-border transition flex items-center gap-1"><i class="fa-solid fa-rotate text-xs"></i> تحديث</button>
+                    <button id="btn-notif-bell" class="relative w-7 h-7 rounded-lg bg-secondary hover:bg-hover border border-border flex items-center justify-center text-xs transition" title="التنبيهات">
+                        <i class="fa-solid fa-bell text-amber-500"></i>
+                        <span id="bell-badge" class="absolute -top-1 -end-1 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[8px] font-bold flex items-center justify-center hidden">0</span>
+                    </button>
+                    <button id="btn-theme-toggle" class="w-7 h-7 rounded-lg bg-secondary hover:bg-hover border border-border flex items-center justify-center text-xs transition" title="تبديل الوضع">
+                        <i class="fa-solid fa-moon"></i>
+                    </button>
+                </div>
             </div>
             
             <!-- ======================================== -->
@@ -1378,6 +1380,21 @@
                             </table>
                         </div>
                     </div>
+                </div>
+
+                <!-- 🔐 صلاحيات الأدوار -->
+                <div class="card p-6 rounded-2xl space-y-4 mt-6">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-bold"><i class="fa-solid fa-lock ml-2 text-amber-500"></i>إدارة الصلاحيات</h3>
+                        <button id="btn-load-permissions" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-rotate ml-1"></i> تحميل</button>
+                    </div>
+                    <p class="text-xs text-muted">حدد صلاحيات كل دور (ضع علامة ✓ للإجراءات المسموحة)</p>
+                    <div id="permissions-matrix" class="overflow-x-auto">
+                        <p class="text-sm text-muted p-4 text-center">اضغط "تحميل" لعرض الصلاحيات</p>
+                    </div>
+                    <button id="btn-save-permissions" class="btn-gold px-6 py-2.5 rounded-xl text-sm hidden">
+                        <i class="fa-solid fa-floppy-disk ml-1"></i> حفظ الصلاحيات
+                    </button>
                 </div>
             </section>
 

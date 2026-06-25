@@ -364,7 +364,7 @@ function setCachedResponse(action, params, data) {
 
 async function callBackend(action, parameters = {}) {
     // للقراءة فقط — نشوف الكاش الأول
-    const isReadAction = !["login", "createTrip", "updateTrip", "updateTripStatus", "settleTripFinancials", "addExpense", "createUser", "toggleUserStatus", "updateUserRole", "deleteUser", "resetUserPassword", "createVehicle", "updateVehicle", "deleteVehicle", "createDriver", "updateDriverData", "deleteDriver", "createClient", "updateClient", "deleteClient", "addFuelBalance", "updateFuelPrice", "updateMaintenance", "deleteMaintenance", "markNotificationRead", "markAllNotificationsRead", "deleteNotification", "addBalance", "deductBalance", "transferBalance"].includes(action);
+    const isReadAction = !["login", "createTrip", "updateTrip", "updateTripStatus", "settleTripFinancials", "addExpense", "createUser", "toggleUserStatus", "updateUserRole", "deleteUser", "resetUserPassword", "createVehicle", "updateVehicle", "deleteVehicle", "createDriver", "updateDriverData", "deleteDriver", "createClient", "updateClient", "deleteClient", "addFuelBalance", "updateFuelPrice", "updateExpense", "deleteExpense", "updateMaintenance", "deleteMaintenance", "markNotificationRead", "markAllNotificationsRead", "deleteNotification", "addBalance", "deductBalance", "transferBalance", "savePermissions"].includes(action);
     if (isReadAction && !parameters._force) {
         const cached = getCachedResponse(action, parameters);
         if (cached) return cached;
@@ -403,7 +403,7 @@ async function callBackend(action, parameters = {}) {
     }
 
     // إضافة Idempotency Key
-    const isWriteAction = ["createTrip", "updateTrip", "settleTripFinancials", "addExpense", "createUser", "toggleUserStatus", "updateUserRole", "deleteUser", "resetUserPassword", "createVehicle", "updateVehicle", "deleteVehicle", "createDriver", "updateDriverData", "deleteDriver", "createClient", "updateClient", "deleteClient", "addFuelBalance", "updateFuelPrice", "markNotificationRead", "markAllNotificationsRead", "deleteNotification", "addBalance", "transferBalance"].includes(action);
+    const isWriteAction = ["createTrip", "updateTrip", "settleTripFinancials", "addExpense", "createUser", "toggleUserStatus", "updateUserRole", "deleteUser", "resetUserPassword", "createVehicle", "updateVehicle", "deleteVehicle", "createDriver", "updateDriverData", "deleteDriver", "createClient", "updateClient", "deleteClient", "addFuelBalance", "updateFuelPrice", "updateExpense", "deleteExpense", "markNotificationRead", "markAllNotificationsRead", "deleteNotification", "addBalance", "deductBalance", "transferBalance", "savePermissions"].includes(action);
     if (isWriteAction) {
         const timestamp = Date.now();
         const randomHex = Math.floor(Math.random() * 0xffffff).toString(16);
@@ -3539,5 +3539,137 @@ function handleStandardError(errorInstance) {
             text: errorInstance.message || "حدث خطأ غير متوقع.",
             confirmButtonColor: '#ef4444'
         });
+    }
+}
+
+// ─── 8️⃣ نظام الصلاحيات الديناميكي ───
+let permissionsData = null;
+
+document.addEventListener('click', function(e) {
+    const loadBtn = e.target.closest('#btn-load-permissions');
+    if (loadBtn) { loadPermissionsMatrix(); return; }
+    const saveBtn = e.target.closest('#btn-save-permissions');
+    if (saveBtn) { savePermissionsMatrix(); return; }
+});
+
+async function loadPermissionsMatrix() {
+    const container = document.getElementById('permissions-matrix');
+    const saveBtn = document.getElementById('btn-save-permissions');
+    if (!container) return;
+
+    container.innerHTML = '<p class="text-sm text-muted p-4 text-center"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</p>';
+
+    try {
+        const res = await callBackend('getPermissions', {});
+        if (!res.success) {
+            container.innerHTML = `<p class="text-sm text-rose-500 p-4 text-center">فشل تحميل الصلاحيات: ${res.message}</p>`;
+            return;
+        }
+
+        permissionsData = res.data;
+        renderPermissionsMatrix(container, permissionsData);
+        saveBtn.classList.remove('hidden');
+    } catch (err) {
+        container.innerHTML = `<p class="text-sm text-rose-500 p-4 text-center">خطأ: ${err.message}</p>`;
+    }
+}
+
+function renderPermissionsMatrix(container, data) {
+    const roles = Object.keys(data.roles);
+    const allActions = data.allActions || [];
+
+    // Group actions by category
+    const categories = {
+        'الرحلات': ['getTrips', 'getDrivers', 'createTrip', 'updateTripStatus', 'updateTrip', 'settleTripFinancials', 'getTripExpenses'],
+        'المصروفات': ['addExpense', 'updateExpense', 'deleteExpense', 'getExpenses', 'getMonthlyExpenses'],
+        'المستخدمين': ['createUser', 'getUsers', 'toggleUserStatus', 'updateUserRole', 'deleteUser', 'resetUserPassword'],
+        'العربيات': ['getVehicles', 'createVehicle', 'updateVehicle', 'deleteVehicle'],
+        'السائقين': ['getDriversList', 'createDriver', 'updateDriverData', 'deleteDriver'],
+        'العملاء': ['getClients', 'createClient', 'updateClient', 'deleteClient'],
+        'البنزينة': ['getFuelBalance', 'addFuelBalance', 'getFuelTransactions', 'getFuelAnalytics', 'updateFuelPrice'],
+        'التنبيهات': ['getNotifications', 'markNotificationRead', 'markAllNotificationsRead', 'deleteNotification'],
+        'الصيانة': ['getMaintenance', 'getVehicleMaintenance', 'getTripMaintenance', 'updateMaintenance', 'deleteMaintenance'],
+        'العهدات': ['getMyBalance', 'getUserBalance', 'getMyTransactions', 'getAllTransactions', 'addBalance', 'deductBalance', 'transferBalance'],
+        'أخرى': ['getDashboard', 'getLookups', 'logout', 'viewAuditLog']
+    };
+
+    const roleLabels = { 'Admin': 'مدير نظام', 'Manager': 'مدير عام', 'Operations': 'عمليات', 'Accountant': 'محاسب' };
+    const actionLabels = {
+        'getTrips': 'عرض الرحلات', 'getDrivers': 'عرض السائقين', 'createTrip': 'إنشاء رحلة',
+        'updateTripStatus': 'تحديث حالة الرحلة', 'updateTrip': 'تعديل الرحلة',
+        'settleTripFinancials': 'تصفية الرحلة', 'getTripExpenses': 'مصروفات الرحلة',
+        'addExpense': 'إضافة مصروف', 'updateExpense': 'تعديل مصروف', 'deleteExpense': 'حذف مصروف',
+        'getExpenses': 'عرض المصروفات', 'getMonthlyExpenses': 'مصروفات الشهر',
+        'createUser': 'إنشاء مستخدم', 'getUsers': 'عرض المستخدمين', 'toggleUserStatus': 'تعطيل/تفعيل مستخدم',
+        'updateUserRole': 'تغيير دور', 'deleteUser': 'حذف مستخدم', 'resetUserPassword': 'إعادة كلمة السر',
+        'getVehicles': 'عرض العربيات', 'createVehicle': 'إضافة عربية', 'updateVehicle': 'تعديل عربية', 'deleteVehicle': 'حذف عربية',
+        'getDriversList': 'عرض السائقين', 'createDriver': 'إضافة سائق', 'updateDriverData': 'تعديل سائق', 'deleteDriver': 'حذف سائق',
+        'getClients': 'عرض العملاء', 'createClient': 'إضافة عميل', 'updateClient': 'تعديل عميل', 'deleteClient': 'حذف عميل',
+        'getFuelBalance': 'رصيد البنزينة', 'addFuelBalance': 'إضافة رصيد بنزينة',
+        'getFuelTransactions': 'حركة البنزينة', 'getFuelAnalytics': 'تحليل البنزينة', 'updateFuelPrice': 'تحديث سعر السولار',
+        'getNotifications': 'عرض التنبيهات', 'markNotificationRead': 'تحديد مقروء', 'markAllNotificationsRead': 'تحديد الكل مقروء',
+        'deleteNotification': 'حذف تنبيه',
+        'getMaintenance': 'عرض الصيانة', 'getVehicleMaintenance': 'صيانة عربية', 'getTripMaintenance': 'صيانة رحلة',
+        'updateMaintenance': 'تحديث صيانة', 'deleteMaintenance': 'حذف صيانة',
+        'getMyBalance': 'رصيدي', 'getUserBalance': 'رصيد مستخدم', 'getMyTransactions': 'حركتي',
+        'getAllTransactions': 'كل الحركة', 'addBalance': 'إضافة عهدة', 'deductBalance': 'خصم عهدة', 'transferBalance': 'تحويل عهدة',
+        'getDashboard': 'لوحة التحكم', 'getLookups': 'قوائم', 'logout': 'تسجيل خروج', 'viewAuditLog': 'سجل التدقيق'
+    };
+
+    let html = '<table class="w-full text-right border-collapse text-xs"><thead><tr><th class="p-2 text-muted border-b border-border">الإجراء</th>';
+    roles.forEach(role => {
+        html += `<th class="p-2 text-center border-b border-border">${roleLabels[role] || role}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+
+    Object.entries(categories).forEach(([category, actions]) => {
+        html += `<tr class="bg-secondary/40"><td colspan="${roles.length + 1}" class="p-2 text-xs font-bold text-muted">${category}</td></tr>`;
+        actions.forEach(action => {
+            html += `<tr class="hover:bg-hover/50 transition"><td class="p-1.5 pr-3 text-muted">${actionLabels[action] || action}</td>`;
+            roles.forEach(role => {
+                const checked = (data.roles[role] || []).includes(action);
+                html += `<td class="p-1.5 text-center"><input type="checkbox" data-role="${role}" data-action="${action}" ${checked ? 'checked' : ''} class="w-4 h-4 accent-amber-500 cursor-pointer"></td>`;
+            });
+            html += '</tr>';
+        });
+    });
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+async function savePermissionsMatrix() {
+    if (!permissionsData) return;
+
+    const container = document.getElementById('permissions-matrix');
+    const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+
+    // Build permissions from checkboxes
+    const newRoles = {};
+    checkboxes.forEach(cb => {
+        const role = cb.dataset.role;
+        const action = cb.dataset.action;
+        if (!newRoles[role]) newRoles[role] = [];
+        if (cb.checked) newRoles[role].push(action);
+    });
+
+    // Preserve original roles that might not have checkboxes displayed
+    Object.keys(permissionsData.roles).forEach(role => {
+        if (!newRoles[role]) newRoles[role] = [];
+    });
+
+    try {
+        const res = await callBackend('savePermissions', {
+            bodyPayload: JSON.stringify(newRoles)
+        });
+
+        if (res.success) {
+            Swal.fire({ icon: 'success', title: 'تم حفظ الصلاحيات', timer: 1500, showConfirmButton: false });
+            permissionsData.roles = newRoles;
+        } else {
+            Swal.fire({ icon: 'error', title: 'فشل الحفظ', text: res.message });
+        }
+    } catch (err) {
+        handleStandardError(err);
     }
 }

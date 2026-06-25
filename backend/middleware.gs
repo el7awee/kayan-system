@@ -40,7 +40,9 @@ const ROLE_PERMISSIONS = {
     'updateTrip',
     // 🔧 الصيانة
     'getMaintenance', 'getVehicleMaintenance', 'getTripMaintenance',
-    'updateMaintenance', 'deleteMaintenance'
+    'updateMaintenance', 'deleteMaintenance',
+    // 🔐 الصلاحيات
+    'getPermissions', 'savePermissions'
   ],
   'Manager': [
     // القديمة
@@ -85,7 +87,7 @@ const ROLE_PERMISSIONS = {
     'getDriversList',
     // العملاء (قراءة فقط)
     'getClients',
-    'getMonthlyExpenses', 'getExpenses',
+    'getMonthlyExpenses', 'getExpenses', 'addExpense', 'updateExpense', 'deleteExpense',
     // 🆕 العهدات (محدودة)
     'getMyBalance', 'getMyTransactions',
     // 🆕 تعديل الرحلات
@@ -158,12 +160,8 @@ function validateAuthenticationAndRBAC(token, action, userId, userRole) {
   
   let realRole = authResult.role;
   
-  let allowedActions = ROLE_PERMISSIONS[realRole];
-  if (!allowedActions) {
-    throwBusinessError("INSUFFICIENT_PERMISSIONS", `دور المستخدم (${realRole}) غير معروف.`);
-  }
-  
-  if (allowedActions.indexOf(action) === -1) {
+  // استخدام الصلاحيات من شيت Permissions (مع fallback للـ hardcoded)
+  if (!validateRoleAccessFromSheet(action, realRole)) {
     throwBusinessError("INSUFFICIENT_PERMISSIONS", 
       `عذراً، دورك التشغيلي (${realRole}) لا يمتلك الصلاحية لتنفيذ الإجراء: ${action}`);
   }
@@ -294,6 +292,5 @@ function throwBusinessError(code, message) {
  * ─── دالة التحقق من صلاحية المستخدم (واجهة مبسطة) ───
  */
 function authService_checkPermission(userRole, action) {
-  let allowed = ROLE_PERMISSIONS[userRole] || [];
-  return allowed.indexOf(action) !== -1;
+  return validateRoleAccessFromSheet(action, userRole);
 }
