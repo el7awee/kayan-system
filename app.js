@@ -357,6 +357,47 @@ function bindUIEvents() {
             exportToExcel(data, cfg.headers, cfg.filename);
         });
     });
+
+    // ─── نسخ احتياطي ───
+    document.getElementById("btn-backup-json")?.addEventListener("click", () => {
+        const backup = {};
+        Object.keys(state.cache).forEach(k => {
+            if (state.cache[k] && Array.isArray(state.cache[k]) && state.cache[k].length)
+                backup[k] = state.cache[k];
+        });
+        backup.timestamp = new Date().toISOString();
+        backup.version = "6.0";
+        const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `kayan-backup-${new Date().toISOString().slice(0,10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        document.getElementById("backup-status").textContent = `✅ تم التصدير - ${Object.keys(backup).length - 2} جداول`;
+    });
+
+    document.getElementById("btn-backup-google")?.addEventListener("click", async () => {
+        const statusEl = document.getElementById("backup-status");
+        statusEl.textContent = "⏳ جاري التحميل من Apps Script...";
+        try {
+            const res = await callBackend("exportAllDataToJson");
+            if (res.success && res.data) {
+                const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `kayan-full-backup-${new Date().toISOString().slice(0,10)}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                statusEl.textContent = "✅ تم التصدير من Apps Script";
+            } else {
+                statusEl.textContent = "❌ فشل التصدير: " + (res.message || 'خطأ غير معروف');
+            }
+        } catch (err) {
+            statusEl.textContent = "❌ خطأ: " + err.message;
+        }
+    });
 }
 
 // ─── 3️⃣ إدارة التنقل ───
