@@ -68,37 +68,21 @@ function expenseService_addExpense(e, userId) {
 function uploadBase64FileToDrive(base64Data, fileName) {
   try {
     let cleanBase64 = base64Data;
-    let contentType = "application/octet-stream";
-    
     if (base64Data.indexOf(",") !== -1) {
-      let parts = base64Data.split(",");
-      cleanBase64 = parts[1];
-      let mimeMatch = parts[0].match(/:(.*?);/);
-      if (mimeMatch) contentType = mimeMatch[1];
+      cleanBase64 = base64Data.split(",")[1];
     }
-    
-    let safeFileName = fileName.replace(/[^a-zA-Z0-9_.\-]/g, '_');
-    if (!safeFileName) safeFileName = "receipt_" + Date.now();
     
     let decodedBytes = Utilities.base64Decode(cleanBase64);
-    let blob = Utilities.newBlob(decodedBytes, contentType, safeFileName);
+    let blob = Utilities.newBlob(decodedBytes, "application/octet-stream", fileName);
     
-    // جرب الفولدر المخصص، لو فشل احفظ في الجذر
-    let folder;
-    try {
-      folder = DriveApp.getFolderById(EXPENSES_DRIVE_FOLDER_ID);
-    } catch (e) {
-      // تجاهل — هينشئ في الجذر
-    }
-    
-    let file;
-    if (folder) {
-      file = folder.createFile(blob);
-    } else {
-      file = DriveApp.createFile(blob);
-    }
-    
+    let file = DriveApp.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return file.getId();
+    
+  } catch (driveError) {
+    throwBusinessError("CLOUD_STORAGE_ERROR", "فشل النظام في معالجة ورفع الملف: " + driveError.message);
+  }
+}
     return file.getId();
     
   } catch (driveError) {

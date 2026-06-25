@@ -239,6 +239,9 @@ function routeRequest(e, method, userId, userRole) {
       case 'updateTrip':
         resultPayload = tripService_updateTrip(e, realUserId);
         break;
+      case 'testDriveUpload':
+        resultPayload = expenseService_testDriveUpload();
+        break;
       case 'addExpense':
         resultPayload = expenseService_addExpense(e, realUserId);
         break;
