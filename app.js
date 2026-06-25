@@ -293,6 +293,70 @@ function bindUIEvents() {
 
     // رفع الملفات
     document.getElementById("expense-file-input")?.addEventListener("change", handleFileProcessing);
+
+    // ─── تصدير Excel ───
+    const EXPORT_CONFIG = {
+        'btn-export-trips': {
+            getData: () => (state.cache.trips || []).filter(t => t[0] && t[0] !== "Trip_ID" && !(t[13] === true || t[13] === "TRUE")),
+            headers: ['الرحلة', 'العميل', 'السائق', 'العربية', 'الجاز (لتر)', 'بواسطة', 'الحالة'],
+            filename: 'الرحلات'
+        },
+        'btn-export-expenses': {
+            getData: () => state.cache.expenses || [],
+            headers: ['النوع', 'البيان', 'القيمة', 'الإيصال', 'التاريخ', 'بواسطة'],
+            filename: 'المصروفات'
+        },
+        'btn-export-fuel': {
+            getData: () => state.fuelTransactions || [],
+            headers: ['التاريخ', 'العربية', 'النوع', 'اللترات', 'القيمة', 'المصدر', 'بواسطة'],
+            filename: 'حركة_الجاز'
+        },
+        'btn-export-maintenance': {
+            getData: () => state.cache.maintenance || [],
+            headers: ['التاريخ', 'العربية', 'الرحلة', 'نوع الصيانة', 'التكلفة', 'الورشة', 'العداد', 'بواسطة'],
+            filename: 'الصيانة'
+        },
+        'btn-export-vehicles': {
+            getData: () => state.cache.vehicles || [],
+            headers: ['الرقم', 'اللوحة', 'الموديل', 'النوع', 'رخصة'],
+            filename: 'العربيات'
+        },
+        'btn-export-drivers': {
+            getData: () => state.cache.drivers || [],
+            headers: ['الاسم', 'التليفون', 'رخصة', 'العهدة'],
+            filename: 'السائقين'
+        },
+        'btn-export-clients': {
+            getData: () => state.cache.clients || [],
+            headers: ['الاسم', 'التليفون', 'العنوان'],
+            filename: 'العملاء'
+        },
+        'btn-export-balance': {
+            getData: () => state.cache.balanceTransactions || [],
+            headers: ['التاريخ', 'المستخدم', 'النوع', 'المبلغ', 'الرصيد بعد', 'ملاحظات', 'بواسطة'],
+            filename: 'العهدات'
+        },
+        'btn-export-notifications': {
+            getData: () => state.cache.notifications || [],
+            headers: ['العنوان', 'الرسالة', 'التاريخ', 'مقروءة'],
+            filename: 'التنبيهات'
+        },
+        'btn-export-users': {
+            getData: () => state.cache.users || [],
+            headers: ['الاسم', 'المستخدم', 'الدور', 'الحالة'],
+            filename: 'المستخدمين'
+        }
+    };
+    Object.entries(EXPORT_CONFIG).forEach(([btnId, cfg]) => {
+        document.getElementById(btnId)?.addEventListener("click", () => {
+            const data = cfg.getData();
+            if (!data || !data.length) {
+                Swal.fire({ icon: 'warning', title: 'لا توجد بيانات', text: 'حمّل البيانات أولاً' });
+                return;
+            }
+            exportToExcel(data, cfg.headers, cfg.filename);
+        });
+    });
 }
 
 // ─── 3️⃣ إدارة التنقل ───
@@ -3449,6 +3513,37 @@ function setButtonLoading(buttonElement, isLoading, textContent) {
     } else {
         buttonElement.disabled = false;
         buttonElement.innerHTML = textContent;
+    }
+}
+
+// ─── تصدير Excel/CSV ───
+function exportToExcel(data, headers, filename) {
+    if (!data || !data.length) { Swal.fire({ icon: 'warning', title: 'لا توجد بيانات للتصدير' }); return; }
+    const rows = data.map(row => {
+        if (Array.isArray(row)) return row;
+        return headers.map((_, i) => {
+            const keys = Object.keys(row);
+            const val = i < keys.length ? row[keys[i]] : '';
+            return val !== undefined && val !== null ? String(val) : '';
+        });
+    });
+    if (typeof XLSX !== 'undefined') {
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+        XLSX.writeFile(wb, `${filename}.xlsx`);
+    } else {
+        const BOM = '\uFEFF';
+        let csv = BOM + headers.join(',') + '\n';
+        rows.forEach(r => {
+            csv += r.map(v => `"${(v||'').replace(/"/g,'""')}"`).join(',') + '\n';
+        });
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `${filename}.csv`;
+        link.click();
+        URL.revokeObjectURL(link.href);
     }
 }
 

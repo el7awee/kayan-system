@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap');
@@ -823,7 +824,10 @@
                     <div class="lg:col-span-2 card rounded-2xl overflow-hidden flex flex-col">
                         <div class="p-4 border-b border-border bg-secondary/30 flex items-center justify-between">
                             <h3 class="text-sm font-bold"><i class="fa-solid fa-list-check text-orange-500 ml-2"></i>الرحلات الحالية</h3>
-                            <button id="btn-refresh-trips" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition flex items-center gap-1"><i class="fa-solid fa-rotate text-[10px]"></i> تحديث</button>
+                            <div class="flex items-center gap-2">
+                                <button id="btn-export-trips" class="text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1"><i class="fa-solid fa-file-excel text-[10px]"></i> Excel</button>
+                                <button id="btn-refresh-trips" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition flex items-center gap-1"><i class="fa-solid fa-rotate text-[10px]"></i> تحديث</button>
+                            </div>
                         </div>
                         <div class="table-toolbar">
                             <div class="search-wrap">
@@ -869,9 +873,12 @@
                         <h2 class="text-xl font-bold"><i class="fa-solid fa-file-invoice-dollar text-rose-500 ml-2"></i>إدارة المصروفات</h2>
                         <p class="text-xs text-muted mt-0.5">تسجيل وفلترة ومراجعة كل المصروفات</p>
                     </div>
-                    <button id="btn-refresh-expenses-table" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg border border-border transition flex items-center gap-1.5">
-                        <i class="fa-solid fa-rotate text-xs"></i> تحديث
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button id="btn-export-expenses" class="text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1"><i class="fa-solid fa-file-excel text-[10px]"></i> Excel</button>
+                        <button id="btn-refresh-expenses-table" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg border border-border transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-rotate text-xs"></i> تحديث
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Summary Cards -->
@@ -1012,6 +1019,7 @@
                 <div class="flex gap-3 flex-wrap">
                     <button id="btn-add-fuel-balance" class="btn-gold px-6 py-2.5 rounded-xl text-sm"><i class="fa-solid fa-plus ml-1"></i> إضافة رصيد</button>
                     <button id="btn-update-fuel-price" class="btn-gold px-6 py-2.5 rounded-xl text-sm"><i class="fa-solid fa-pen ml-1"></i> تغيير سعر اللتر</button>
+                    <button id="btn-export-fuel" class="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 px-6 py-2.5 rounded-xl text-sm border border-emerald-500/20 transition"><i class="fa-solid fa-file-excel ml-1"></i> Excel</button>
                     <button id="btn-refresh-fuel-data" class="bg-secondary hover:bg-hover px-6 py-2.5 rounded-xl text-sm border border-border transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
                 </div>
                 <div class="card rounded-2xl overflow-hidden">
@@ -1060,6 +1068,7 @@
                         <h2 class="text-2xl font-bold">سجل الصيانة</h2>
                         <p class="text-xs text-muted mt-1">تتبع صيانة العربيات وتكاليفها</p>
                     </div>
+                    <button id="btn-export-maintenance" class="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 px-4 py-2 rounded-xl text-sm border border-emerald-500/20 transition"><i class="fa-solid fa-file-excel ml-1"></i> Excel</button>
                     <button id="btn-refresh-maintenance" class="bg-secondary hover:bg-hover px-4 py-2 rounded-xl text-sm border border-border transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
                 </div>
                 <div class="card rounded-2xl overflow-hidden">
@@ -1113,6 +1122,7 @@
                 <div class="card rounded-2xl overflow-hidden">
                     <div class="p-4 border-b border-border bg-secondary/30 flex items-center justify-between">
                         <h3 class="text-sm font-bold"><i class="fa-solid fa-truck ml-2 text-orange-500"></i>قائمة العربيات</h3>
+                        <button id="btn-export-vehicles" class="text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1"><i class="fa-solid fa-file-excel text-[10px]"></i> Excel</button>
                         <button id="btn-refresh-vehicles" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition flex items-center gap-1"><i class="fa-solid fa-rotate text-[10px]"></i> تحديث</button>
                     </div>
                     <div class="table-toolbar">
@@ -1155,6 +1165,7 @@
                 <div class="card rounded-2xl overflow-hidden">
                     <div class="p-4 border-b border-border bg-secondary/30 flex items-center justify-between">
                         <h3 class="text-sm font-bold"><i class="fa-solid fa-users ml-2 text-orange-500"></i>قائمة السائقين</h3>
+                        <button id="btn-export-drivers" class="text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1"><i class="fa-solid fa-file-excel text-[10px]"></i> Excel</button>
                         <button id="btn-refresh-drivers" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition flex items-center gap-1"><i class="fa-solid fa-rotate text-[10px]"></i> تحديث</button>
                     </div>
                     <div class="table-toolbar">
@@ -1196,6 +1207,7 @@
                 <div class="card rounded-2xl overflow-hidden">
                     <div class="p-4 border-b border-border bg-secondary/30 flex items-center justify-between">
                         <h3 class="text-sm font-bold"><i class="fa-solid fa-building ml-2 text-orange-500"></i>قائمة العملاء</h3>
+                        <button id="btn-export-clients" class="text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1"><i class="fa-solid fa-file-excel text-[10px]"></i> Excel</button>
                         <button id="btn-refresh-clients" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition flex items-center gap-1"><i class="fa-solid fa-rotate text-[10px]"></i> تحديث</button>
                     </div>
                     <div class="table-toolbar">
@@ -1234,6 +1246,7 @@
                     <div class="flex gap-2">
                         <button id="btn-add-balance" class="btn-gold px-4 py-2 rounded-xl text-sm"><i class="fa-solid fa-plus ml-1"></i> إيداع</button>
                         <button id="btn-transfer-balance" class="btn-gold px-4 py-2 rounded-xl text-sm"><i class="fa-solid fa-arrow-right-arrow-left ml-1"></i> تحويل</button>
+                        <button id="btn-export-balance" class="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 px-4 py-2 rounded-xl text-sm border border-emerald-500/20 transition"><i class="fa-solid fa-file-excel ml-1"></i> Excel</button>
                         <button id="btn-refresh-balance" class="bg-secondary hover:bg-hover px-4 py-2 rounded-xl text-sm border border-border transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
                     </div>
                 </div>
@@ -1312,6 +1325,7 @@
                 <div class="card rounded-2xl overflow-hidden">
                     <div class="p-5 border-b border-border bg-secondary/30 flex items-center justify-between">
                         <h3 class="text-base font-bold"><i class="fa-solid fa-bell ml-2 text-amber-500"></i>قائمة التنبيهات</h3>
+                        <button id="btn-export-notifications" class="text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1"><i class="fa-solid fa-file-excel text-[10px]"></i> Excel</button>
                         <button id="btn-refresh-notifications" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
                     </div>
                     <div id="notifications-list" class="divide-y divide-border">
@@ -1367,6 +1381,7 @@
                     <div class="lg:col-span-2 card rounded-2xl overflow-hidden flex flex-col">
                         <div class="p-5 border-b border-border bg-secondary/30 flex items-center justify-between">
                             <h3 class="text-base font-bold"><i class="fa-solid fa-users ml-2 text-slate-400"></i>المستخدمين</h3>
+                            <button id="btn-export-users" class="text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1"><i class="fa-solid fa-file-excel text-[10px]"></i> Excel</button>
                             <button id="btn-refresh-users" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
                         </div>
                         <div class="overflow-x-auto">
