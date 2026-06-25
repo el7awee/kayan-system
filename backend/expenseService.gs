@@ -73,17 +73,27 @@ function uploadBase64FileToDrive(base64Data, fileName) {
     if (base64Data.indexOf(",") !== -1) {
       let parts = base64Data.split(",");
       cleanBase64 = parts[1];
-      contentType = parts[0].split(":")[1].split(";")[0];
+      let mimeMatch = parts[0].match(/:(.*?);/);
+      if (mimeMatch) contentType = mimeMatch[1];
     }
     
+    // تنظيف اسم الملف
+    let safeFileName = fileName.replace(/[^a-zA-Z0-9_.\-]/g, '_');
+    if (!safeFileName) safeFileName = "receipt_" + Date.now();
+    
     let decodedBytes = Utilities.base64Decode(cleanBase64);
-    let blob = Utilities.newBlob(decodedBytes, contentType, fileName);
+    let blob = Utilities.newBlob(decodedBytes, contentType, safeFileName);
     
     let folder;
-    if (EXPENSES_DRIVE_FOLDER_ID === "YOUR_GOOGLE_DRIVE_FOLDER_ID_HERE") {
+    try {
+      if (EXPENSES_DRIVE_FOLDER_ID === "YOUR_GOOGLE_DRIVE_FOLDER_ID_HERE") {
+        folder = DriveApp.getRootFolder();
+      } else {
+        folder = DriveApp.getFolderById(EXPENSES_DRIVE_FOLDER_ID);
+      }
+    } catch (e) {
+      // لو الفولدر مش موجود — نحفظ في Root
       folder = DriveApp.getRootFolder();
-    } else {
-      folder = DriveApp.getFolderById(EXPENSES_DRIVE_FOLDER_ID);
     }
     
     let file = folder.createFile(blob);
