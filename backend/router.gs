@@ -242,6 +242,15 @@ function routeRequest(e, method, userId, userRole) {
       case 'addExpense':
         resultPayload = expenseService_addExpense(e, realUserId);
         break;
+      case 'getExpenses':
+        resultPayload = expenseService_getExpenses(ss, e.parameter);
+        break;
+      case 'updateExpense':
+        resultPayload = expenseService_updateExpense(ss, e, realUserId);
+        break;
+      case 'deleteExpense':
+        resultPayload = expenseService_deleteExpense(ss, e, realUserId);
+        break;
       case 'getMonthlyExpenses':
         resultPayload = expenseService_getMonthlyExpenses(ss);
         break;

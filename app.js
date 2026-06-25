@@ -164,7 +164,11 @@ function bindUIEvents() {
         await loadDropdowns();
         loadTripsData();
     });
-    document.getElementById("nav-expenses")?.addEventListener("click", () => { switchView("view-expenses"); loadDropdowns(); });
+    document.getElementById("nav-expenses")?.addEventListener("click", () => {
+        switchView("view-expenses");
+        loadDropdowns();
+        loadExpensesData();
+    });
     document.getElementById("nav-fuel")?.addEventListener("click", () => { switchView("view-fuel"); loadFuelData(); });
     document.getElementById("nav-maintenance")?.addEventListener("click", () => { switchView("view-maintenance"); loadMaintenanceData(); });
     document.getElementById("nav-vehicles")?.addEventListener("click", () => { switchView("view-vehicles"); loadVehiclesData(); });
@@ -184,14 +188,22 @@ function bindUIEvents() {
 
     // كبس KPIs — ضغطة ع الكارت توديك لصفحته
     document.getElementById("card-active-trips")?.addEventListener("click", () => { switchView("view-trips"); loadTripsData(); });
-    document.getElementById("card-expenses")?.addEventListener("click", () => { switchView("view-expenses"); loadDropdowns(); });
+    document.getElementById("card-expenses")?.addEventListener("click", () => { switchView("view-expenses"); loadDropdowns(); loadExpensesData(); });
     document.getElementById("card-fuel")?.addEventListener("click", () => { switchView("view-fuel"); loadFuelData(); });
     document.getElementById("card-balance")?.addEventListener("click", () => { switchView("view-balance"); loadBalanceData(); });
     document.getElementById("card-vehicles")?.addEventListener("click", () => { switchView("view-vehicles"); loadVehiclesData(); });
     document.getElementById("card-drivers")?.addEventListener("click", () => { switchView("view-drivers"); loadDriversData(); });
 
     // أزرار التحديث
-    document.getElementById("btn-refresh-dashboard")?.addEventListener("click", () => refreshDashboard(true));
+    document.getElementById("btn-refresh-dashboard")?.addEventListener("click", (e) => {
+        const btn = e.currentTarget;
+        const icon = btn.querySelector("i");
+        if (icon) { icon.className = "fa-solid fa-spinner fa-spin text-xs"; }
+        setTimeout(() => {
+            refreshDashboard(true);
+            if (icon) setTimeout(() => { icon.className = "fa-solid fa-rotate text-xs"; }, 500);
+        }, 100);
+    });
     document.getElementById("btn-refresh-trips")?.addEventListener("click", () => loadTripsData(true));
     document.getElementById("btn-refresh-fuel-data")?.addEventListener("click", loadFuelData);
     document.getElementById("btn-refresh-maintenance")?.addEventListener("click", () => loadMaintenanceData(true));
@@ -201,6 +213,20 @@ function bindUIEvents() {
     document.getElementById("btn-refresh-users")?.addEventListener("click", () => loadUsersData(true));
     document.getElementById("btn-refresh-notifications")?.addEventListener("click", loadNotificationsData);
     document.getElementById("btn-refresh-balance")?.addEventListener("click", () => loadBalanceData(true));
+    document.getElementById("btn-refresh-expenses-table")?.addEventListener("click", () => loadExpensesData(true));
+
+    // إلغاء تعديل المصروف
+    document.getElementById("btn-expense-cancel-edit")?.addEventListener("click", cancelExpenseEdit);
+
+    // فلتر المصروفات
+    document.getElementById("filter-expense-category")?.addEventListener("change", () => loadExpensesData());
+    document.getElementById("search-expenses")?.addEventListener("input", debounce(() => loadExpensesData(), 300));
+
+    // إظهار/إخفاء حقل اللترات حسب التصنيف
+    document.getElementById("expense-category")?.addEventListener("change", function() {
+        const wrap = document.getElementById("exp-fuel-liters-wrap");
+        if (wrap) wrap.style.display = (this.value === "بنزين / سولار") ? "block" : "none";
+    });
 
     // البنزينة
     document.getElementById("btn-add-fuel-balance")?.addEventListener("click", handleAddFuelBalance);
@@ -444,10 +470,13 @@ async function handleLoginSubmit(e) {
 
 // ─── 5️⃣-ب: لوحة التحكم ───
 async function refreshDashboard(forceRefresh = false) {
+    const dashStatus = document.getElementById("dash-last-update");
+    const loadingDot = document.getElementById("dash-loading");
     try {
         // Update timestamp
         const now = new Date();
-        document.getElementById("dash-last-update").innerText = now.toLocaleString('ar-EG');
+        if (dashStatus) dashStatus.innerText = now.toLocaleString('ar-EG');
+        if (loadingDot) loadingDot.classList.remove("hidden");
 
         // طلب واحد مجمّع بدل 5 طلبات منفصلة (تحسين السرعة)
         const dash = await callBackend("getDashboard", { Limit: 20, _force: forceRefresh });
@@ -1015,6 +1044,183 @@ async function handleCreateTripSubmit(e) {
 }
 
 // ─── 5️⃣-و: المصروفات ───
+// ─── 5️⃣-و: تحميل المصروفات ───
+let expensesCache = null;
+async function loadExpensesData(forceRefresh = false) {
+    const tbody = document.getElementById("table-expenses-body");
+    if (!tbody) return;
+
+    if (!forceRefresh && expensesCache) {
+        renderExpensesTable(expensesCache);
+        return;
+    }
+
+    tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
+
+    try {
+        // جلب كل المصروفات
+        const res = await callBackend("getExpenses", { Limit: 500 });
+        const expenses = res?.data || [];
+        expensesCache = expenses;
+        
+        // جلب monthly summary
+        const monthlyRes = await callBackend("getMonthlyExpenses");
+        const monthly = monthlyRes?.data;
+        if (monthly) {
+            const total = monthly.total || 0;
+            animateCounter(document.getElementById("exp-summary-total"), total, ' ج.م');
+            
+            // Breakdown by category
+            let fuelTotal = 0, tollTotal = 0, otherTotal = 0;
+            (monthly.expenses || []).forEach(ex => {
+                if (ex.category === "بنزين / سولار") fuelTotal += ex.amount;
+                else if (ex.category === "كارتة طرق") tollTotal += ex.amount;
+                else otherTotal += ex.amount;
+            });
+            animateCounter(document.getElementById("exp-summary-fuel"), fuelTotal, ' ج.م');
+            animateCounter(document.getElementById("exp-summary-toll"), tollTotal, ' ج.م');
+            animateCounter(document.getElementById("exp-summary-other"), otherTotal, ' ج.م');
+        }
+        
+        renderExpensesTable(expenses);
+        
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-rose-400">فشل التحميل</td></tr>`;
+        handleStandardError(err);
+    }
+}
+
+function renderExpensesTable(expenses) {
+    const tbody = document.getElementById("table-expenses-body");
+    const countEl = document.getElementById("exp-table-count");
+    if (!tbody) return;
+    
+    // Apply category filter
+    const catFilter = document.getElementById("filter-expense-category")?.value;
+    const searchQuery = (document.getElementById("search-expenses")?.value || "").toLowerCase();
+    
+    let filtered = expenses;
+    if (catFilter) filtered = filtered.filter(e => e.category === catFilter);
+    if (searchQuery) {
+        filtered = filtered.filter(e =>
+            (e.trip_id || "").toLowerCase().includes(searchQuery) ||
+            (e.category || "").toLowerCase().includes(searchQuery) ||
+            (e.amount || "").toString().includes(searchQuery)
+        );
+    }
+    
+    if (countEl) countEl.innerText = `${filtered.length} مصروف`;
+    
+    if (!filtered.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-muted">لا توجد مصروفات</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = filtered.map(ex => {
+        const isOwner = state.user.id === ex.created_by;
+        const showActions = state.user.role === "Admin" || state.user.role === "Manager" || isOwner;
+        return `
+            <tr class="border-b border-border hover:bg-secondary/20 transition">
+                <td class="py-2.5 px-3 font-mono text-[11px]">${ex.trip_id || '—'}</td>
+                <td class="py-2.5 px-3">${ex.driver_id || '—'}</td>
+                <td class="py-2.5 px-3">${ex.vehicle_id || '—'}</td>
+                <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded-full text-[10px] ${getCategoryBadge(ex.category)}">${ex.category}</span></td>
+                <td class="py-2.5 px-3 font-mono font-bold">${(ex.amount || 0).toLocaleString()} ج.م</td>
+                <td class="py-2.5 px-3 text-muted text-[10px]">${formatDate(ex.created_at)}</td>
+                <td class="py-2.5 px-3 text-center">
+                    ${showActions ? `
+                        <button class="text-amber-400 hover:text-amber-300 mx-1 edit-expense-btn" data-id="${ex.expense_id}" title="تعديل"><i class="fa-solid fa-pen-to-square"></i></button>
+                        <button class="text-rose-400 hover:text-rose-300 mx-1 delete-expense-btn" data-id="${ex.expense_id}" title="حذف"><i class="fa-solid fa-trash-can"></i></button>
+                    ` : ''}
+                </td>
+            </tr>
+        `;
+    }).join('');
+    
+    // Bind edit/delete events
+    tbody.querySelectorAll(".edit-expense-btn").forEach(btn => {
+        btn.addEventListener("click", () => handleExpenseEdit(btn.dataset.id));
+    });
+    tbody.querySelectorAll(".delete-expense-btn").forEach(btn => {
+        btn.addEventListener("click", () => handleExpenseDelete(btn.dataset.id));
+    });
+}
+
+function getCategoryBadge(cat) {
+    const map = {
+        "بنزين / سولار": "bg-sky-500/10 text-sky-400",
+        "كارتة طرق": "bg-amber-500/10 text-amber-400",
+        "صيانة": "bg-purple-500/10 text-purple-400",
+        "إكراميات": "bg-emerald-500/10 text-emerald-400",
+        "مبيت ومأكل": "bg-orange-500/10 text-orange-400",
+    };
+    return map[cat] || "bg-rose-500/10 text-rose-400";
+}
+
+function formatDate(iso) {
+    if (!iso) return '—';
+    try {
+        const d = new Date(iso);
+        return d.toLocaleDateString('ar-EG', { day: '2-digit', month: '2-digit' });
+    } catch { return iso; }
+}
+
+function cancelExpenseEdit() {
+    document.getElementById("expense-edit-id").value = "";
+    document.getElementById("form-add-expense").reset();
+    document.getElementById("expense-file-base64").value = "";
+    document.getElementById("expense-file-name").value = "";
+    document.getElementById("btn-expense-cancel-edit").classList.add("hidden");
+    document.getElementById("btn-expense-submit").innerHTML = '<i class="fa-solid fa-cloud-arrow-up ml-1"></i> حفظ المصروف';
+}
+
+async function handleExpenseEdit(expenseId) {
+    // Find expense in cache
+    const expense = (expensesCache || []).find(e => e.expense_id === expenseId);
+    if (!expense) {
+        Swal.fire({ icon: 'error', title: 'خطأ', text: 'لم يتم العثور على المصروف.' });
+        return;
+    }
+    
+    // Fill form
+    document.getElementById("expense-edit-id").value = expenseId;
+    document.getElementById("expense-trip-id").value = expense.trip_id || '';
+    document.getElementById("expense-driver-id").value = expense.driver_id || '';
+    document.getElementById("expense-vehicle-id").value = expense.vehicle_id || '';
+    document.getElementById("expense-category").value = expense.category || '';
+    document.getElementById("expense-amount").value = expense.amount || 0;
+    
+    // Show cancel button, change submit text
+    document.getElementById("btn-expense-cancel-edit").classList.remove("hidden");
+    document.getElementById("btn-expense-submit").innerHTML = '<i class="fa-solid fa-pen ml-1"></i> تحديث المصروف';
+    
+    // Scroll to form
+    document.querySelector("#view-expenses .card").scrollIntoView({ behavior: 'smooth' });
+}
+
+async function handleExpenseDelete(expenseId) {
+    const confirm = await Swal.fire({
+        title: 'حذف المصروف؟',
+        text: 'لا يمكن التراجع عن هذا الإجراء.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: 'حذف',
+        cancelButtonText: 'إلغاء'
+    });
+    if (!confirm.isConfirmed) return;
+    
+    try {
+        await callBackend("deleteExpense", { Expense_ID: expenseId });
+        Swal.fire({ icon: 'success', title: 'تم الحذف', timer: 1500, showConfirmButton: false });
+        loadExpensesData(true);
+        refreshDashboard();
+    } catch (err) {
+        handleStandardError(err);
+    }
+}
+
 async function handleAddExpenseSubmit(e) {
     e.preventDefault();
     const submitBtn = document.getElementById("btn-expense-submit");
@@ -1049,11 +1255,21 @@ async function handleAddExpenseSubmit(e) {
     };
 
     try {
-        await callBackend("addExpense", params);
-        Swal.fire({ icon: 'success', title: 'تم الحفظ', text: 'تم تسجيل المصروف.', timer: 2000, showConfirmButton: false });
-        document.getElementById("form-add-expense").reset();
-        document.getElementById("expense-file-base64").value = "";
-        document.getElementById("expense-file-name").value = "";
+        const editId = document.getElementById("expense-edit-id")?.value;
+        if (editId) {
+            // Update mode
+            params.Expense_ID = editId;
+            await callBackend("updateExpense", params);
+            Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
+            cancelExpenseEdit();
+        } else {
+            await callBackend("addExpense", params);
+            Swal.fire({ icon: 'success', title: 'تم الحفظ', text: 'تم تسجيل المصروف.', timer: 2000, showConfirmButton: false });
+            document.getElementById("form-add-expense").reset();
+            document.getElementById("expense-file-base64").value = "";
+            document.getElementById("expense-file-name").value = "";
+        }
+        loadExpensesData(true);
         refreshDashboard();
     } catch (err) {
         handleStandardError(err);
@@ -2525,6 +2741,15 @@ function lookupVehicleLabel(vehicleId) {
     if (!vehicleId) return "بدون";
     const vehicle = (state.cache.vehicles || []).find(v => v.vehicle_id === vehicleId);
     return vehicle ? `${vehicle.plate_number} (${vehicle.model})` : vehicleId;
+}
+
+// ─── أدوات مساعدة ───
+function debounce(fn, delay) {
+    let timer;
+    return function(...args) {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn.apply(this, args), delay);
+    };
 }
 
 function setButtonLoading(buttonElement, isLoading, textContent) {

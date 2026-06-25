@@ -28,7 +28,7 @@ const ROLE_PERMISSIONS = {
     // البنزينة
     'getFuelBalance', 'addFuelBalance', 'getFuelTransactions', 'getFuelAnalytics', 'updateFuelPrice',
     // المصروفات
-    'getMonthlyExpenses',
+    'getMonthlyExpenses', 'getExpenses', 'updateExpense', 'deleteExpense',
     // التنبيهات
     'getNotifications', 'markNotificationRead', 'deleteNotification', 'markAllNotificationsRead',
     // العهدات (القديمة - للسائقين)
@@ -57,7 +57,7 @@ const ROLE_PERMISSIONS = {
     // البنزينة
     'getFuelBalance', 'addFuelBalance', 'getFuelTransactions', 'getFuelAnalytics', 'updateFuelPrice',
     // المصروفات
-    'getMonthlyExpenses',
+    'getMonthlyExpenses', 'getExpenses', 'updateExpense', 'deleteExpense',
     // التنبيهات
     'getNotifications', 'markNotificationRead',
     // العهدات (القديمة - للسائقين)
@@ -85,7 +85,7 @@ const ROLE_PERMISSIONS = {
     'getDriversList',
     // العملاء (قراءة فقط)
     'getClients',
-    'getMonthlyExpenses',
+    'getMonthlyExpenses', 'getExpenses',
     // 🆕 العهدات (محدودة)
     'getMyBalance', 'getMyTransactions',
     // 🆕 تعديل الرحلات
@@ -112,7 +112,7 @@ const ROLE_PERMISSIONS = {
     'getDriversList',
     // العملاء (قراءة فقط)
     'getClients',
-    'getMonthlyExpenses',
+    'getMonthlyExpenses', 'getExpenses',
     // 🆕 تعديل الرحلات
     'updateTrip',
     // 🔧 الصيانة
