@@ -82,7 +82,7 @@ async function importCollection(sheetName, config) {
     // تنظيف undefined/reference values
     const clean = {};
     for (const [key, val] of Object.entries(record)) {
-      if (val !== undefined && val !== null && String(val) !== '') {
+      if (key && val !== undefined && val !== null && String(val) !== '') {
         // تحويل Boolean strings
         if (val === 'TRUE' || val === 'FALSE') {
           clean[key] = val === 'TRUE';

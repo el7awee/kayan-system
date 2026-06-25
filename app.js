@@ -40,6 +40,11 @@ const state = {
     }
 };
 
+// 🟢 تفعيل وضع Firebase (يستخدم Firestore بدل Apps Script للقراءة)
+const USE_FIREBASE = true;
+const USE_FIREBASE_AUTH = false; // Auth لسه من Apps Script
+let autoRefreshTimer = null;
+
 // متغير للتحميل مرة واحدة
 let dropdownsLoaded = false;
 
@@ -467,100 +472,132 @@ async function refreshDashboard(forceRefresh = false) {
     const dashStatus = document.getElementById("dash-last-update");
     const loadingDot = document.getElementById("dash-loading");
     try {
-        // Update timestamp
         const now = new Date();
         if (dashStatus) dashStatus.innerText = now.toLocaleString('ar-EG');
         if (loadingDot) loadingDot.classList.remove("hidden");
 
-        // طلب واحد مجمّع بدل 5 طلبات منفصلة (تحسين السرعة)
-        const dash = await callBackend("getDashboard", { Limit: 20, _force: forceRefresh });
-        const d = dash?.data || {};
-        const tripsRes = { data: d.trips };
-        const fuelRes = { data: d.fuel };
-        const balanceRes = { data: d.my_balance };
-        const notifRes = { data: d.notifications };
-        const expensesRes = { data: d.monthly_expenses };
+        if (USE_FIREBASE && window.fbDbAPI) {
+            // 🟢 قراءة من Firestore مباشرة (أسرع + real-time)
+            const [dash, vehRes, drvRes, fuelTxnRes] = await Promise.all([
+                fbDbAPI.getDashboard(),
+                fbDbAPI.getVehicles(),
+                fbDbAPI.getDrivers(),
+                fbDbAPI.getFuelTransactions()
+            ]);
+            const d = dash?.data || {};
 
-        if (tripsRes?.data) {
-            const trips = tripsRes.data;
-            const activeCount = trips.filter(t => t[7] === "OPEN").length;
-            animateCounter(document.getElementById("stat-active-trips"), activeCount);
-            state.cache.trips = trips;
-            state.activeTrips = trips;
-        }
+            // كروت Dashboard
+            animateCounter(document.getElementById("stat-active-trips"), d.active_trips || 0);
+            animateCounter(document.getElementById("stat-fuel-balance"), d.current_fuel_balance || 0, ' ج.م');
+            animateCounter(document.getElementById("stat-total-expenses"), d.total_expenses || 0, ' ج.م');
+            animateCounter(document.getElementById("stat-my-balance"), state.myBalance || 0, ' ج.م');
 
-        if (fuelRes?.data) {
-            const bal = fuelRes.data.current_balance || 0;
-            const el = document.getElementById("stat-fuel-balance");
-            animateCounter(el, bal, ' ج.م');
-            el.style.color = bal < 0 ? "#ef4444" : "#22c55e";
-        }
-
-        if (balanceRes?.data) {
-            const myBalance = balanceRes.data.current_balance || 0;
-            animateCounter(document.getElementById("stat-my-balance"), myBalance, ' ج.م');
-            state.myBalance = myBalance;
-        }
-
-        // تحديث جرس التنبيهات في الهيدر
-        const unreadCount = notifRes?.data?.unread_count || 0;
-        state.cache.notifications = notifRes?.data?.notifications || [];
-        const bellBadge = document.getElementById("bell-badge");
-        const notifBadge = document.getElementById("notif-badge");
-        if (unreadCount > 0) {
-            if (bellBadge) { bellBadge.innerText = unreadCount; bellBadge.classList.remove("hidden"); }
-            if (notifBadge) { notifBadge.innerText = unreadCount; notifBadge.classList.remove("hidden"); }
-        } else {
-            if (bellBadge) bellBadge.classList.add("hidden");
-            if (notifBadge) notifBadge.classList.add("hidden");
-        }
-
-        // حساب إحصائيات العربيات والسائقين
-        const trips = tripsRes?.data || [];
-        const busyVehicleIds = new Set(trips.filter(t => t[7] === "OPEN").map(t => t[4]).filter(Boolean));
-        const busyDriverIds = new Set(trips.filter(t => t[7] === "OPEN").map(t => t[3]).filter(Boolean));
-
-        try {
-            const vehRes = await callBackend("getVehicles");
+            // العربيات
             const vehicles = vehRes?.data || [];
+            const trips = d.trips || [];
+            const openTrips = trips.filter(t => t.Trip_Status === 'OPEN');
+            const busyVehIds = new Set(openTrips.map(t => t.Vehicle_Number).filter(Boolean));
             const totalVeh = vehicles.length;
-            const busyVeh = busyVehicleIds.size;
+            const busyVeh = busyVehIds.size;
             document.getElementById("stat-vehicles").innerHTML = `<span class="text-emerald-400">${totalVeh - busyVeh}</span> / <span class="text-rose-400">${busyVeh}</span>`;
             state.cache.vehicles = vehicles;
-        } catch (e) { /* ignore */ }
 
-        try {
-            const drvRes = await callBackend("getDriversList");
+            // السواقين
             const drivers = drvRes?.data || [];
+            const busyDrvIds = new Set(openTrips.map(t => t.Driver_Code).filter(Boolean));
             const totalDrv = drivers.length;
-            const busyDrv = busyDriverIds.size;
+            const busyDrv = busyDrvIds.size;
             document.getElementById("stat-drivers").innerHTML = `<span class="text-emerald-400">${totalDrv - busyDrv}</span> / <span class="text-rose-400">${busyDrv}</span>`;
             state.cache.drivers = drivers;
-        } catch (e) { /* ignore */ }
 
-        if (expensesRes?.data) {
-            const monthlyTotal = expensesRes.data.total || 0;
-            animateCounter(document.getElementById("stat-total-expenses"), monthlyTotal, ' ج.م');
-            // Store for chart
-            window._lastExpensesData = expensesRes.data;
+            // Charts (Fuel + Expenses)
+            const fuelTxns = fuelTxnRes?.data || [];
+            window._lastFuelData = buildFuelChartData(fuelTxns);
+            renderCharts(null, window._lastFuelData);
+            loadFuelAnalytics();
+
+        } else {
+            // 🔵 قراءة من Apps Script (الطريقة القديمة)
+            const dash = await callBackend("getDashboard", { Limit: 20, _force: forceRefresh });
+            const d = dash?.data || {};
+            const tripsRes = { data: d.trips };
+            const fuelRes = { data: d.fuel };
+            const balanceRes = { data: d.my_balance };
+            const notifRes = { data: d.notifications };
+            const expensesRes = { data: d.monthly_expenses };
+
+            if (tripsRes?.data) {
+                const trips = tripsRes.data;
+                const activeCount = trips.filter(t => t[7] === "OPEN").length;
+                animateCounter(document.getElementById("stat-active-trips"), activeCount);
+                state.cache.trips = trips;
+                state.activeTrips = trips;
+            }
+
+            if (fuelRes?.data) {
+                const bal = fuelRes.data.current_balance || 0;
+                const el = document.getElementById("stat-fuel-balance");
+                animateCounter(el, bal, ' ج.م');
+                el.style.color = bal < 0 ? "#ef4444" : "#22c55e";
+            }
+
+            if (balanceRes?.data) {
+                const myBalance = balanceRes.data.current_balance || 0;
+                animateCounter(document.getElementById("stat-my-balance"), myBalance, ' ج.م');
+                state.myBalance = myBalance;
+            }
+
+            // جرس التنبيهات
+            const unreadCount = notifRes?.data?.unread_count || 0;
+            state.cache.notifications = notifRes?.data?.notifications || [];
+            const bellBadge = document.getElementById("bell-badge");
+            const notifBadge = document.getElementById("notif-badge");
+            if (unreadCount > 0) {
+                if (bellBadge) { bellBadge.innerText = unreadCount; bellBadge.classList.remove("hidden"); }
+                if (notifBadge) { notifBadge.innerText = unreadCount; notifBadge.classList.remove("hidden"); }
+            } else {
+                if (bellBadge) bellBadge.classList.add("hidden");
+                if (notifBadge) notifBadge.classList.add("hidden");
+            }
+
+            // إحصائيات العربيات والسائقين
+            const trips = tripsRes?.data || [];
+            const busyVehicleIds = new Set(trips.filter(t => t[7] === "OPEN").map(t => t[4]).filter(Boolean));
+            const busyDriverIds = new Set(trips.filter(t => t[7] === "OPEN").map(t => t[3]).filter(Boolean));
+
+            try {
+                const vehRes = await callBackend("getVehicles");
+                const vehicles = vehRes?.data || [];
+                const totalVeh = vehicles.length;
+                const busyVeh = busyVehicleIds.size;
+                document.getElementById("stat-vehicles").innerHTML = `<span class="text-emerald-400">${totalVeh - busyVeh}</span> / <span class="text-rose-400">${busyVeh}</span>`;
+                state.cache.vehicles = vehicles;
+            } catch (e) { /* ignore */ }
+
+            try {
+                const drvRes = await callBackend("getDriversList");
+                const drivers = drvRes?.data || [];
+                const totalDrv = drivers.length;
+                const busyDrv = busyDriverIds.size;
+                document.getElementById("stat-drivers").innerHTML = `<span class="text-emerald-400">${totalDrv - busyDrv}</span> / <span class="text-rose-400">${busyDrv}</span>`;
+                state.cache.drivers = drivers;
+            } catch (e) { /* ignore */ }
+
+            if (expensesRes?.data) {
+                const monthlyTotal = expensesRes.data.total || 0;
+                animateCounter(document.getElementById("stat-total-expenses"), monthlyTotal, ' ج.م');
+                window._lastExpensesData = expensesRes.data;
+            }
+
+            if (balanceRes?.data) {
+                window._lastBalanceData = balanceRes.data;
+            }
+
+            await loadFuelTransactions();
+            window._lastFuelData = buildFuelChartData(state.fuelTransactions || []);
+            renderCharts(window._lastExpensesData, window._lastFuelData);
+            loadFuelAnalytics();
         }
-
-        // Store balance data for chart
-        if (balanceRes?.data) {
-            window._lastBalanceData = balanceRes.data;
-        }
-
-        // Load fuel transactions first so fuel chart has data
-        await loadFuelTransactions();
-
-        // Store fuel data for chart
-        window._lastFuelData = buildFuelChartData(state.fuelTransactions || []);
-
-        // Render charts
-        renderCharts(window._lastExpensesData, window._lastFuelData);
-
-        // Load fuel analytics
-        loadFuelAnalytics();
 
     } catch (err) {
         console.error("فشل تحديث لوحة التحكم:", err);
@@ -570,30 +607,70 @@ async function refreshDashboard(forceRefresh = false) {
 // ─── تحليل استهلاك البنزين ───
 async function loadFuelAnalytics() {
     try {
-        const res = await callBackend("getFuelAnalytics");
-        const data = res?.data;
-        if (!data) return;
-        
-        document.getElementById("fuel-analytics-total").innerText = data.total_liters || 0;
-        
-        const tbody = document.querySelector("#fuel-analytics-table tbody");
-        if (!tbody) return;
-        
-        if (!data.vehicles || data.vehicles.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted">لا توجد بيانات</td></tr>';
-            return;
+        if (USE_FIREBASE && window.fbDbAPI) {
+            const [txnRes] = await Promise.all([fbDbAPI.getFuelTransactions()]);
+            const txns = txnRes?.data || [];
+            const initialTxns = txns.filter(t => t.Transaction_Type === 'INITIAL' || t.Transaction_Type === 'ADD');
+
+            const totalLiters = initialTxns.reduce((s, t) => s + (parseFloat(t.Amount_Liters) || 0), 0);
+            const totalCost = initialTxns.reduce((s, t) => s + (parseFloat(t.Amount_EGP) || 0), 0);
+            const tripCount = new Set(initialTxns.map(t => t.Trip_ID).filter(Boolean)).size;
+
+            document.getElementById("fuel-analytics-total").innerText = totalLiters || 0;
+            document.getElementById("fuel-analytics-cost").innerText = (totalCost || 0).toLocaleString('ar-EG');
+            document.getElementById("fuel-analytics-avg").innerText = initialTxns.length > 0 ? (totalLiters / initialTxns.length).toFixed(1) : 0;
+            document.getElementById("fuel-analytics-trips").innerText = tripCount;
+
+            const vehicleMap = {};
+            initialTxns.filter(t => t.Trip_ID).forEach(t => {
+                const vId = t.Vehicle_ID || t.Vehicle_Number || 'أخرى';
+                if (!vehicleMap[vId]) vehicleMap[vId] = { liters: 0, cost: 0, trips: new Set() };
+                vehicleMap[vId].liters += parseFloat(t.Amount_Liters) || 0;
+                vehicleMap[vId].cost += parseFloat(t.Amount_EGP) || 0;
+                vehicleMap[vId].trips.add(t.Trip_ID);
+            });
+
+            const tbody = document.querySelector("#fuel-analytics-table tbody");
+            if (!tbody) return;
+            const entries = Object.entries(vehicleMap);
+            if (entries.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted">لا توجد بيانات</td></tr>';
+                return;
+            }
+            tbody.innerHTML = entries.map(([vId, v]) => `
+                <tr class="border-b border-border hover:bg-secondary/30 transition">
+                    <td class="py-2 px-2 font-medium">${vId}</td>
+                    <td class="py-2 px-2 font-mono">${v.liters.toFixed(1)}</td>
+                    <td class="py-2 px-2 font-mono">${v.cost.toLocaleString()}</td>
+                    <td class="py-2 px-2">${v.trips.size}</td>
+                </tr>
+            `).join('');
+        } else {
+            const res = await callBackend("getFuelAnalytics");
+            const data = res?.data;
+            if (!data) return;
+            
+            document.getElementById("fuel-analytics-total").innerText = data.total_liters || 0;
+            
+            const tbody = document.querySelector("#fuel-analytics-table tbody");
+            if (!tbody) return;
+            
+            if (!data.vehicles || data.vehicles.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted">لا توجد بيانات</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = data.vehicles.map(v => `
+                <tr class="border-b border-border hover:bg-secondary/30 transition">
+                    <td class="py-2 px-2 font-medium">${v.vehicle_id}</td>
+                    <td class="py-2 px-2 font-mono">${v.total_liters}</td>
+                    <td class="py-2 px-2 font-mono">${v.total_cost.toLocaleString()}</td>
+                    <td class="py-2 px-2">${v.trip_count}</td>
+                </tr>
+            `).join('');
         }
-        
-        tbody.innerHTML = data.vehicles.map(v => `
-            <tr class="border-b border-border hover:bg-secondary/30 transition">
-                <td class="py-2 px-2 font-medium">${v.vehicle_id}</td>
-                <td class="py-2 px-2 font-mono">${v.total_liters}</td>
-                <td class="py-2 px-2 font-mono">${v.total_cost.toLocaleString()}</td>
-                <td class="py-2 px-2">${v.trip_count}</td>
-            </tr>
-        `).join('');
     } catch (e) {
-        console.error("فشل تحليل استهلاك البنزين:", e);
+        if (!USE_FIREBASE) console.error("فشل تحليل استهلاك البنزين:", e);
     }
 }
 
