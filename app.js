@@ -555,48 +555,49 @@ async function refreshDashboard(forceRefresh = false) {
         if (dashStatus) dashStatus.innerText = now.toLocaleString('ar-EG');
         if (loadingDot) loadingDot.classList.remove("hidden");
 
+        let fbOk = false;
         if (USE_FIREBASE && window.fbDbAPI) {
-            // 🟢 قراءة من Firestore مباشرة (أسرع + real-time)
-            const [dash, vehRes, drvRes, fuelTxnRes] = await Promise.all([
-                fbDbAPI.getDashboard(),
-                fbDbAPI.getVehicles(),
-                fbDbAPI.getDrivers(),
-                fbDbAPI.getFuelTransactions()
-            ]);
-            const d = dash?.data || {};
+            try {
+                const [dash, vehRes, drvRes, fuelTxnRes] = await Promise.all([
+                    fbDbAPI.getDashboard(),
+                    fbDbAPI.getVehicles(),
+                    fbDbAPI.getDrivers(),
+                    fbDbAPI.getFuelTransactions()
+                ]);
+                const d = dash?.data || {};
+                if (dash?.success && d.active_trips !== undefined) fbOk = true;
 
-            // كروت Dashboard
-            animateCounter(document.getElementById("stat-active-trips"), d.active_trips || 0);
-            animateCounter(document.getElementById("stat-fuel-balance"), d.current_fuel_balance || 0, ' ج.م');
-            animateCounter(document.getElementById("stat-total-expenses"), d.total_expenses || 0, ' ج.م');
-            animateCounter(document.getElementById("stat-my-balance"), state.myBalance || 0, ' ج.م');
+                animateCounter(document.getElementById("stat-active-trips"), d.active_trips || 0);
+                animateCounter(document.getElementById("stat-fuel-balance"), d.current_fuel_balance || 0, ' ج.م');
+                animateCounter(document.getElementById("stat-total-expenses"), d.total_expenses || 0, ' ج.م');
+                animateCounter(document.getElementById("stat-my-balance"), state.myBalance || 0, ' ج.م');
 
-            // العربيات
-            const vehicles = vehRes?.data || [];
-            const trips = d.trips || [];
-            const openTrips = trips.filter(t => t.Trip_Status === 'OPEN');
-            const busyVehIds = new Set(openTrips.map(t => t.Vehicle_Number).filter(Boolean));
-            const totalVeh = vehicles.length;
-            const busyVeh = busyVehIds.size;
-            document.getElementById("stat-vehicles").innerHTML = `<span class="text-emerald-400">${totalVeh - busyVeh}</span> / <span class="text-rose-400">${busyVeh}</span>`;
-            state.cache.vehicles = vehicles;
+                const vehicles = vehRes?.data || [];
+                const trips = d.trips || [];
+                const openTrips = trips.filter(t => t.trip_status === 'OPEN');
+                const busyVehIds = new Set(openTrips.map(t => t.vehicle_number).filter(Boolean));
+                const totalVeh = vehicles.length;
+                document.getElementById("stat-vehicles").innerHTML = `<span class="text-emerald-400">${totalVeh - busyVehIds.size}</span> / <span class="text-rose-400">${busyVehIds.size}</span>`;
+                if (vehicles.length) state.cache.vehicles = vehicles;
 
-            // السواقين
-            const drivers = drvRes?.data || [];
-            const busyDrvIds = new Set(openTrips.map(t => t.Driver_Code).filter(Boolean));
-            const totalDrv = drivers.length;
-            const busyDrv = busyDrvIds.size;
-            document.getElementById("stat-drivers").innerHTML = `<span class="text-emerald-400">${totalDrv - busyDrv}</span> / <span class="text-rose-400">${busyDrv}</span>`;
-            state.cache.drivers = drivers;
+                const drivers = drvRes?.data || [];
+                const busyDrvIds = new Set(openTrips.map(t => t.driver_code).filter(Boolean));
+                document.getElementById("stat-drivers").innerHTML = `<span class="text-emerald-400">${drivers.length - busyDrvIds.size}</span> / <span class="text-rose-400">${busyDrvIds.size}</span>`;
+                if (drivers.length) state.cache.drivers = drivers;
+                if (trips.length) { state.cache.trips = trips; state.activeTrips = trips; }
+                if (d.monthly_expenses) window._lastExpensesData = d.monthly_expenses;
 
-            // Charts (Fuel + Expenses)
-            const fuelTxns = fuelTxnRes?.data || [];
-            window._lastFuelData = buildFuelChartData(fuelTxns);
-            renderCharts(null, window._lastFuelData);
-            loadFuelAnalytics();
+                const fuelTxns = fuelTxnRes?.data || [];
+                window._lastFuelData = buildFuelChartData(fuelTxns);
+                if (window._lastExpensesData || window._lastFuelData) renderCharts(window._lastExpensesData, window._lastFuelData);
+                loadFuelAnalytics();
+            } catch (fbErr) {
+                console.warn('Firebase dashboard failed:', fbErr);
+            }
+        }
 
-        } else {
-            // 🔵 قراءة من Apps Script (الطريقة القديمة)
+        if (!fbOk) {
+            // 🔵 قراءة من Apps Script
             const dash = await callBackend("getDashboard", { Limit: 20, _force: forceRefresh });
             const d = dash?.data || {};
             const tripsRes = { data: d.trips };
@@ -626,7 +627,6 @@ async function refreshDashboard(forceRefresh = false) {
                 state.myBalance = myBalance;
             }
 
-            // جرس التنبيهات
             const unreadCount = notifRes?.data?.unread_count || 0;
             state.cache.notifications = notifRes?.data?.notifications || [];
             const bellBadge = document.getElementById("bell-badge");
@@ -639,7 +639,6 @@ async function refreshDashboard(forceRefresh = false) {
                 if (notifBadge) notifBadge.classList.add("hidden");
             }
 
-            // إحصائيات العربيات والسائقين
             const trips = tripsRes?.data || [];
             const busyVehicleIds = new Set(trips.filter(t => t[7] === "OPEN").map(t => t[4]).filter(Boolean));
             const busyDriverIds = new Set(trips.filter(t => t[7] === "OPEN").map(t => t[3]).filter(Boolean));
@@ -648,29 +647,23 @@ async function refreshDashboard(forceRefresh = false) {
                 const vehRes = await callBackend("getVehicles");
                 const vehicles = vehRes?.data || [];
                 const totalVeh = vehicles.length;
-                const busyVeh = busyVehicleIds.size;
-                document.getElementById("stat-vehicles").innerHTML = `<span class="text-emerald-400">${totalVeh - busyVeh}</span> / <span class="text-rose-400">${busyVeh}</span>`;
+                document.getElementById("stat-vehicles").innerHTML = `<span class="text-emerald-400">${totalVeh - busyVehicleIds.size}</span> / <span class="text-rose-400">${busyVehicleIds.size}</span>`;
                 state.cache.vehicles = vehicles;
             } catch (e) { /* ignore */ }
 
             try {
                 const drvRes = await callBackend("getDriversList");
                 const drivers = drvRes?.data || [];
-                const totalDrv = drivers.length;
-                const busyDrv = busyDriverIds.size;
-                document.getElementById("stat-drivers").innerHTML = `<span class="text-emerald-400">${totalDrv - busyDrv}</span> / <span class="text-rose-400">${busyDrv}</span>`;
+                document.getElementById("stat-drivers").innerHTML = `<span class="text-emerald-400">${drivers.length - busyDriverIds.size}</span> / <span class="text-rose-400">${busyDriverIds.size}</span>`;
                 state.cache.drivers = drivers;
             } catch (e) { /* ignore */ }
 
             if (expensesRes?.data) {
-                const monthlyTotal = expensesRes.data.total || 0;
-                animateCounter(document.getElementById("stat-total-expenses"), monthlyTotal, ' ج.م');
+                animateCounter(document.getElementById("stat-total-expenses"), expensesRes.data.total || 0, ' ج.م');
                 window._lastExpensesData = expensesRes.data;
             }
 
-            if (balanceRes?.data) {
-                window._lastBalanceData = balanceRes.data;
-            }
+            if (balanceRes?.data) window._lastBalanceData = balanceRes.data;
 
             await loadFuelTransactions();
             window._lastFuelData = buildFuelChartData(state.fuelTransactions || []);
@@ -766,12 +759,18 @@ async function loadDropdowns(forceRefresh = false) {
                     fbDbAPI.getDrivers(),
                     fbDbAPI.getVehicles()
                 ]);
-                lookups = {
-                    clients: clientsRes.success ? clientsRes.data : [],
-                    drivers: driversRes.success ? driversRes.data : [],
-                    vehicles: vehiclesRes.success ? vehiclesRes.data : [],
-                    fuel_price: 0
-                };
+                const fClients = clientsRes.success ? clientsRes.data : [];
+                const fDrivers = driversRes.success ? driversRes.data : [];
+                const fVehicles = vehiclesRes.success ? vehiclesRes.data : [];
+                // Only use Firebase data if at least clients loaded
+                if (fClients.length) {
+                    lookups = {
+                        clients: fClients,
+                        drivers: fDrivers,
+                        vehicles: fVehicles,
+                        fuel_price: 0
+                    };
+                }
             } catch (e) { console.warn('Firebase error', e); }
         }
         if (!lookups) {
@@ -891,7 +890,7 @@ async function loadTripsData(forceRefresh = false) {
     const tbody = document.getElementById("table-trips-body");
     if (!tbody) return;
 
-    if (!forceRefresh && state.cache.trips) {
+    if (!forceRefresh && state.cache.trips?.length) {
         renderTripsTable(state.cache.trips);
         return;
     }
@@ -899,7 +898,7 @@ async function loadTripsData(forceRefresh = false) {
     if (USE_FIREBASE && window.fbDbAPI) {
         try {
             const res = await fbDbAPI.getTrips();
-            if (res.success && res.data) {
+            if (res.success && res.data?.length) {
                 state.cache.trips = res.data;
                 state.activeTrips = res.data;
                 renderTripsTable(res.data);
@@ -1986,7 +1985,7 @@ async function loadVehiclesData(forceRefresh = false) {
     const tbody = document.getElementById("table-vehicles-body");
     if (!tbody) return;
 
-    if (!forceRefresh && state.cache.vehicles) {
+    if (!forceRefresh && state.cache.vehicles?.length) {
         renderVehiclesTable(state.cache.vehicles);
         return;
     }
@@ -1994,7 +1993,7 @@ async function loadVehiclesData(forceRefresh = false) {
     if (USE_FIREBASE && window.fbDbAPI) {
         try {
             const res = await fbDbAPI.getVehicles();
-            if (res.success && res.data) {
+            if (res.success && res.data?.length) {
                 state.cache.vehicles = res.data;
                 renderVehiclesTable(res.data);
                 return;
@@ -2190,7 +2189,7 @@ async function loadDriversData(forceRefresh = false) {
     const tbody = document.getElementById("table-drivers-body");
     if (!tbody) return;
 
-    if (!forceRefresh && state.cache.drivers) {
+    if (!forceRefresh && state.cache.drivers?.length) {
         renderDriversTable(state.cache.drivers);
         return;
     }
@@ -2198,7 +2197,7 @@ async function loadDriversData(forceRefresh = false) {
     if (USE_FIREBASE && window.fbDbAPI) {
         try {
             const res = await fbDbAPI.getDrivers();
-            if (res.success && res.data) {
+            if (res.success && res.data?.length) {
                 state.cache.drivers = res.data;
                 renderDriversTable(res.data);
                 return;
@@ -2389,7 +2388,7 @@ async function loadClientsData(forceRefresh = false) {
     const tbody = document.getElementById("table-clients-body");
     if (!tbody) return;
 
-    if (!forceRefresh && state.cache.clients) {
+    if (!forceRefresh && state.cache.clients?.length) {
         renderClientsTable(state.cache.clients);
         return;
     }
@@ -2397,7 +2396,7 @@ async function loadClientsData(forceRefresh = false) {
     if (USE_FIREBASE && window.fbDbAPI) {
         try {
             const res = await fbDbAPI.getClients();
-            if (res.success && res.data) {
+            if (res.success && res.data?.length) {
                 state.cache.clients = res.data;
                 renderClientsTable(res.data);
                 return;

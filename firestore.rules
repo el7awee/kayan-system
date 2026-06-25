@@ -61,14 +61,26 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // ====== Fuel ======
-    match /fuel/{docId} {
+    // ====== Fuel Balance ======
+    match /fuelBalance/{docId} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated();
     }
 
-    // ====== Balance (عهدات) ======
-    match /balances/{userId} {
+    // ====== Fuel Transactions ======
+    match /fuelTransactions/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // ====== Balance Transactions (عهدات) ======
+    match /balanceTransactions/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminOrManager();
+    }
+
+    // ====== Driver Advances ======
+    match /driverAdvances/{docId} {
       allow read: if isAuthenticated();
       allow write: if isAdminOrManager();
     }

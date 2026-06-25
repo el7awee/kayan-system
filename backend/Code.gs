@@ -35,6 +35,35 @@ function handleRequest(e, method) {
   startTimer("handleRequest_total");
   
   try {
+    // 🚀 استثناء: تصدير كل البيانات كـ JSON (للهجرة)
+    if (e.parameter.export === "all") {
+      let allData = {};
+      const COLLECTIONS = [
+        { sheet: "Users" }, { sheet: "Trips_Log" }, { sheet: "Expenses_Log" },
+        { sheet: "Vehicles" }, { sheet: "Drivers" }, { sheet: "Clients" },
+        { sheet: "Fuel_Balance" }, { sheet: "Fuel_Transactions" },
+        { sheet: "Trip_Advances" }, { sheet: "Notifications" },
+        { sheet: "System_Settings" }, { sheet: "Balance_Transactions" },
+        { sheet: "Maintenance_Log" }, { sheet: "Driver_Advances_Log" }
+      ];
+      for (let cfg of COLLECTIONS) {
+        let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(cfg.sheet);
+        if (!sheet) continue;
+        let data = sheet.getDataRange().getValues();
+        if (data.length < 2) continue;
+        let headers = data[0];
+        let rows = [];
+        for (let i = 1; i < data.length; i++) {
+          let obj = {};
+          headers.forEach((h, idx) => { obj[h] = data[i][idx]; });
+          rows.push(obj);
+        }
+        allData[cfg.sheet] = rows;
+      }
+      return ContentService.createTextOutput(JSON.stringify(allData, null, 2))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     let userId = e.parameter.User_ID || "GUEST";
     let action = e.parameter.action || "";
     

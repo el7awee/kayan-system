@@ -93,44 +93,42 @@ const fbDbAPI = {
   getMaintenance: () => getAllFromCollection('maintenance'),
 
   getDashboard: async () => {
-    try {
-      const [
-        tripsSnap, driversSnap, vehiclesSnap, clientsSnap,
-        expensesSnap, fuelSnap
-      ] = await Promise.all([
-        fbDb.collection('trips').get(),
-        fbDb.collection('drivers').get(),
-        fbDb.collection('vehicles').get(),
-        fbDb.collection('clients').get(),
-        fbDb.collection('expenses').get(),
-        fbDb.collection('fuelBalance').orderBy('last_updated', 'desc').limit(1).get()
-      ]);
+    let trips = [], drivers = [], vehicles = [], clients = [], expenses = [], fuel = [];
+    try { const s = await fbDb.collection('trips').get(); s.forEach(d => trips.push(lowercaseKeys(d.data()))); } catch (e) {}
+    try { const s = await fbDb.collection('drivers').get(); s.forEach(d => drivers.push(lowercaseKeys(d.data()))); } catch (e) {}
+    try { const s = await fbDb.collection('vehicles').get(); s.forEach(d => vehicles.push(lowercaseKeys(d.data()))); } catch (e) {}
+    try { const s = await fbDb.collection('clients').get(); s.forEach(d => clients.push(lowercaseKeys(d.data()))); } catch (e) {}
+    try { const s = await fbDb.collection('expenses').get(); s.forEach(d => expenses.push(lowercaseKeys(d.data()))); } catch (e) {}
+    try { const s = await fbDb.collection('fuelBalance').orderBy('last_updated', 'desc').limit(1).get(); s.forEach(d => fuel.push(lowercaseKeys(d.data()))); } catch (e) {}
 
-      const trips = []; tripsSnap.forEach(d => trips.push(lowercaseKeys(d.data())));
-      const drivers = []; driversSnap.forEach(d => drivers.push(lowercaseKeys(d.data())));
-      const vehicles = []; vehiclesSnap.forEach(d => vehicles.push(lowercaseKeys(d.data())));
-      const clients = []; clientsSnap.forEach(d => clients.push(lowercaseKeys(d.data())));
-      const expenses = []; expensesSnap.forEach(d => expenses.push(lowercaseKeys(d.data())));
-      const fuel = []; fuelSnap.forEach(d => fuel.push(lowercaseKeys(d.data())));
+    const activeTrips = trips.filter(t => t.trip_status === 'OPEN');
+    const totalExpenses = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+    const currentBalance = fuel.length > 0 ? parseFloat(fuel[0].total_balance_egp) || 0 : 0;
 
-      const activeTrips = trips.filter(t => t.trip_status === 'OPEN');
-      const totalExpenses = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-      const currentBalance = fuel.length > 0 ? parseFloat(fuel[0].total_balance_egp) || 0 : 0;
-
-      return {
-        success: true,
-        data: {
-          active_trips: activeTrips.length,
-          total_drivers: drivers.filter(d => d.status !== 'INACTIVE').length,
-          total_vehicles: vehicles.filter(v => v.status !== 'INACTIVE').length,
-          total_clients: clients.length,
-          total_expenses: totalExpenses,
-          current_fuel_balance: currentBalance
-        }
-      };
-    } catch (err) {
-      return { success: false, error: err.message };
+    const catMap = {};
+    for (const ex of expenses) {
+      const cat = (ex.category || '').trim();
+      const amt = parseFloat(ex.amount) || 0;
+      catMap[cat] = (catMap[cat] || 0) + amt;
     }
+
+    return {
+      success: true,
+      data: {
+        active_trips: activeTrips.length,
+        total_drivers: drivers.filter(d => d.status !== 'INACTIVE').length,
+        total_vehicles: vehicles.filter(v => v.status !== 'INACTIVE').length,
+        total_clients: clients.length,
+        total_expenses: totalExpenses,
+        current_fuel_balance: currentBalance,
+        trips: trips,
+        monthly_expenses: {
+          total: totalExpenses,
+          expenses: expenses,
+          categories: catMap
+        }
+      }
+    };
   }
 };
 
