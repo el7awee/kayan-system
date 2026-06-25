@@ -9,10 +9,16 @@ const FIREBASE_CONFIG = {
   measurementId: "G-GW5EMT62XH"
 };
 
-firebase.initializeApp(FIREBASE_CONFIG);
+let fbAuth = null, fbDb = null, fbStorage = null;
 
-const fbAuth = firebase.auth();
-const fbDb = firebase.firestore();
-const fbStorage = firebase.storage();
-
-fbDb.settings({ merge: true });
+if (typeof firebase !== 'undefined') {
+  try {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    fbAuth = firebase.auth();
+    fbDb = firebase.firestore();
+    fbStorage = firebase.storage();
+    fbDb.settings({ merge: true });
+  } catch (e) {
+    console.warn('Firebase init failed:', e);
+  }
+}

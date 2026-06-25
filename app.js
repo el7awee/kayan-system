@@ -41,7 +41,7 @@ const state = {
 };
 
 // 🟢 تفعيل وضع Firebase (يستخدم Firestore بدل Apps Script للقراءة)
-const USE_FIREBASE = true;
+const USE_FIREBASE = false;
 const USE_FIREBASE_AUTH = false; // Auth لسه من Apps Script
 let autoRefreshTimer = null;
 
@@ -137,7 +137,6 @@ function initApp() {
 }
 
 // ─── تحديث تلقائي كل 30 ثانية ───
-let autoRefreshTimer = null;
 function startAutoRefresh() {
     stopAutoRefresh();
         autoRefreshTimer = setInterval(() => {
