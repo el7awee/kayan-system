@@ -1,33 +1,21 @@
-/**
- * منظومة الكيان v7.0 — طبقة الوصول لـ Firestore
- * 
- * كل الدوال ترجع بنفس صيغة callBackend ({ success, data })
- * بس بقري من Firestore مباشرة (أسرع بكتير)
- * 
- * حاليًا: قراءة فقط (READ) — الكتابة لسه من Apps Script
- */
-
 // ====== دوال مساعدة ======
 
-/** تحويل أسماء الحقول من (Pascal_Case) → (snake_case) */
-function normalizeFields(doc) {
+function lowercaseKeys(doc) {
   if (!doc || typeof doc !== 'object') return doc;
-  if (Array.isArray(doc)) return doc.map(normalizeFields);
+  if (Array.isArray(doc)) return doc.map(lowercaseKeys);
   const result = {};
   for (const [key, val] of Object.entries(doc)) {
-    const lower = key.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
-    result[lower] = val;
+    result[key.toLowerCase()] = val;
   }
   return result;
 }
 
-/** قراءة collection كاملة من Firestore */
 async function getAllFromCollection(collectionName) {
   try {
     const snapshot = await fbDb.collection(collectionName).get();
     const docs = [];
     snapshot.forEach(doc => {
-      const data = doc.data();
+      const data = lowercaseKeys(doc.data());
       data.firebase_id = doc.id;
       docs.push(data);
     });
@@ -38,12 +26,11 @@ async function getAllFromCollection(collectionName) {
   }
 }
 
-/** إعداد real-time listener لمجموعة */
 function listenToCollection(collectionName, callback) {
   return fbDb.collection(collectionName).onSnapshot(snapshot => {
     const docs = [];
     snapshot.forEach(doc => {
-      const data = doc.data();
+      const data = lowercaseKeys(doc.data());
       data.firebase_id = doc.id;
       docs.push(data);
     });
@@ -53,49 +40,58 @@ function listenToCollection(collectionName, callback) {
   });
 }
 
-// ====== واجهات برمجية ======
+const TRIP_FIELDS = [
+  "trip_id", "trip_date", "customer_code", "driver_code",
+  "vehicle_number", "route", "advance_cash", "trip_status",
+  "pod_file_id", "created_by", "created_at", "updated_at",
+  "version_number", "isdeleted", "fuel_liters_initial",
+  "fuel_amount_initial", "road_fuel_liters", "road_fuel_amount",
+  "total_fuel_liters", "total_fuel_amount", "fuel_price",
+  "settlement_status", "carried_over_advance"
+];
+
+function tripObjToArray(obj) {
+  const arr = new Array(TRIP_FIELDS.length).fill(null);
+  for (const [key, val] of Object.entries(obj)) {
+    const idx = TRIP_FIELDS.indexOf(key.toLowerCase());
+    if (idx !== -1) arr[idx] = val;
+  }
+  return arr;
+}
 
 const fbDbAPI = {
-  // 📋 الرحلات
-  getTrips: () => getAllFromCollection('trips'),
+  getTrips: async () => {
+    const res = await getAllFromCollection('trips');
+    if (res.success) res.data = res.data.map(tripObjToArray);
+    return res;
+  },
   listenTrips: (cb) => listenToCollection('trips', cb),
 
-  // 🚛 العربيات
   getVehicles: () => getAllFromCollection('vehicles'),
   listenVehicles: (cb) => listenToCollection('vehicles', cb),
 
-  // 👨‍✈️ السواقين
   getDrivers: () => getAllFromCollection('drivers'),
   listenDrivers: (cb) => listenToCollection('drivers', cb),
 
-  // 🏢 العملاء
   getClients: () => getAllFromCollection('clients'),
   listenClients: (cb) => listenToCollection('clients', cb),
 
-  // 💸 المصروفات
   getExpenses: () => getAllFromCollection('expenses'),
   listenExpenses: (cb) => listenToCollection('expenses', cb),
 
-  // ⛽ البنزينة
   getFuelBalance: () => getAllFromCollection('fuelBalance'),
   getFuelTransactions: () => getAllFromCollection('fuelTransactions'),
 
-  // 🔔 الإشعارات
   getNotifications: () => getAllFromCollection('notifications'),
 
-  // 👥 المستخدمين
   getUsers: () => getAllFromCollection('users'),
 
-  // ⚙️ الإعدادات
   getSettings: () => getAllFromCollection('settings'),
 
-  // 💰 العهدات
   getBalanceTransactions: () => getAllFromCollection('balanceTransactions'),
 
-  // 🔧 الصيانة
   getMaintenance: () => getAllFromCollection('maintenance'),
 
-  // 📊 Dashboard — يجمع بيانات كل الكوليكشنز دفعة واحدة
   getDashboard: async () => {
     try {
       const [
@@ -107,26 +103,26 @@ const fbDbAPI = {
         fbDb.collection('vehicles').get(),
         fbDb.collection('clients').get(),
         fbDb.collection('expenses').get(),
-        fbDb.collection('fuelBalance').orderBy('Last_Updated', 'desc').limit(1).get()
+        fbDb.collection('fuelBalance').orderBy('last_updated', 'desc').limit(1).get()
       ]);
 
-      const trips = []; tripsSnap.forEach(d => trips.push(d.data()));
-      const drivers = []; driversSnap.forEach(d => drivers.push(d.data()));
-      const vehicles = []; vehiclesSnap.forEach(d => vehicles.push(d.data()));
-      const clients = []; clientsSnap.forEach(d => clients.push(d.data()));
-      const expenses = []; expensesSnap.forEach(d => expenses.push(d.data()));
-      const fuel = []; fuelSnap.forEach(d => fuel.push(d.data()));
+      const trips = []; tripsSnap.forEach(d => trips.push(lowercaseKeys(d.data())));
+      const drivers = []; driversSnap.forEach(d => drivers.push(lowercaseKeys(d.data())));
+      const vehicles = []; vehiclesSnap.forEach(d => vehicles.push(lowercaseKeys(d.data())));
+      const clients = []; clientsSnap.forEach(d => clients.push(lowercaseKeys(d.data())));
+      const expenses = []; expensesSnap.forEach(d => expenses.push(lowercaseKeys(d.data())));
+      const fuel = []; fuelSnap.forEach(d => fuel.push(lowercaseKeys(d.data())));
 
-      const activeTrips = trips.filter(t => t.Trip_Status === 'OPEN');
-      const totalExpenses = expenses.reduce((s, e) => s + (parseFloat(e.Amount) || 0), 0);
-      const currentBalance = fuel.length > 0 ? parseFloat(fuel[0].Total_Balance_EGP) || 0 : 0;
+      const activeTrips = trips.filter(t => t.trip_status === 'OPEN');
+      const totalExpenses = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+      const currentBalance = fuel.length > 0 ? parseFloat(fuel[0].total_balance_egp) || 0 : 0;
 
       return {
         success: true,
         data: {
           active_trips: activeTrips.length,
-          total_drivers: drivers.filter(d => d.Status !== 'INACTIVE').length,
-          total_vehicles: vehicles.filter(v => v.Status !== 'INACTIVE').length,
+          total_drivers: drivers.filter(d => d.status !== 'INACTIVE').length,
+          total_vehicles: vehicles.filter(v => v.status !== 'INACTIVE').length,
           total_clients: clients.length,
           total_expenses: totalExpenses,
           current_fuel_balance: currentBalance
@@ -138,5 +134,4 @@ const fbDbAPI = {
   }
 };
 
-// تصدير للاستخدام من app.js
 window.fbDbAPI = fbDbAPI;

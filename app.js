@@ -41,7 +41,7 @@ const state = {
 };
 
 // 🟢 تفعيل وضع Firebase (يستخدم Firestore بدل Apps Script للقراءة)
-const USE_FIREBASE = false;
+const USE_FIREBASE = true;
 const USE_FIREBASE_AUTH = false; // Auth لسه من Apps Script
 let autoRefreshTimer = null;
 
@@ -678,9 +678,27 @@ async function loadDropdowns(forceRefresh = false) {
     if (dropdownsLoaded && !forceRefresh) return;
     
     try {
-        // طلب واحد مجمّع بدل 4 طلبات منفصلة (تحسين السرعة)
-        const lookups = await callBackend("getLookups");
-        const lk = lookups?.data || {};
+        let lookups;
+        if (USE_FIREBASE && window.fbDbAPI) {
+            try {
+                const [clientsRes, driversRes, vehiclesRes] = await Promise.all([
+                    fbDbAPI.getClients(),
+                    fbDbAPI.getDrivers(),
+                    fbDbAPI.getVehicles()
+                ]);
+                lookups = {
+                    clients: clientsRes.success ? clientsRes.data : [],
+                    drivers: driversRes.success ? driversRes.data : [],
+                    vehicles: vehiclesRes.success ? vehiclesRes.data : [],
+                    fuel_price: 0
+                };
+            } catch (e) { console.warn('Firebase error', e); }
+        }
+        if (!lookups) {
+            const response = await callBackend("getLookups");
+            lookups = response.data || {};
+        }
+        const lk = lookups || {};
         const clientsRes = { data: lk.clients };
         const driversRes = { data: lk.drivers };
         const vehiclesRes = { data: lk.vehicles };
@@ -704,9 +722,16 @@ async function loadDropdowns(forceRefresh = false) {
         let busyDriverIds = new Set();
         let busyVehicleIds = new Set();
         try {
-            const tripsRes = await callBackend("getTrips", { Limit: 200 });
-            const trips = tripsRes?.data || [];
-            trips.forEach(t => {
+            let tripsData;
+            if (USE_FIREBASE && window.fbDbAPI) {
+                const fbRes = await fbDbAPI.getTrips();
+                if (fbRes.success) tripsData = fbRes.data;
+            }
+            if (!tripsData) {
+                const tripsRes = await callBackend("getTrips", { Limit: 200 });
+                tripsData = tripsRes?.data || [];
+            }
+            tripsData.forEach(t => {
                 if (t[7] === "OPEN") {
                     if (t[3]) busyDriverIds.add(t[3]);
                     if (t[4]) busyVehicleIds.add(t[4]);
@@ -789,6 +814,18 @@ async function loadTripsData(forceRefresh = false) {
     if (!forceRefresh && state.cache.trips) {
         renderTripsTable(state.cache.trips);
         return;
+    }
+
+    if (USE_FIREBASE && window.fbDbAPI) {
+        try {
+            const res = await fbDbAPI.getTrips();
+            if (res.success && res.data) {
+                state.cache.trips = res.data;
+                state.activeTrips = res.data;
+                renderTripsTable(res.data);
+                return;
+            }
+        } catch (e) { console.warn('Firebase error', e); }
     }
 
     tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
@@ -933,7 +970,13 @@ window.triggerSettlement = async function(tripId, currentVersion) {
     let custody = 0;
     let driverName = lookupDriverName(driverId);
     try {
-        const res = await callBackend("getDriversList");
+        let res;
+        if (USE_FIREBASE && window.fbDbAPI) {
+            const fbRes = await fbDbAPI.getDrivers();
+            res = { data: fbRes.success ? fbRes.data : [] };
+        } else {
+            res = await callBackend("getDriversList");
+        }
         const drv = (res?.data || []).find(d => d.driver_id === driverId);
         custody = drv ? (parseFloat(drv.current_advance) || 0) : 0;
         if (drv && drv.full_name) driverName = drv.full_name;
@@ -1123,6 +1166,29 @@ async function loadExpensesData(forceRefresh = false) {
     if (!forceRefresh && expensesCache) {
         renderExpensesTable(expensesCache);
         return;
+    }
+
+    if (USE_FIREBASE && window.fbDbAPI) {
+        try {
+            const res = await fbDbAPI.getExpenses();
+            if (res.success && res.data) {
+                expensesCache = res.data;
+                renderExpensesTable(res.data);
+                // compute monthly from data
+                const total = res.data.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                animateCounter(document.getElementById("exp-summary-total"), total, ' ج.م');
+                let utilitiesTotal = 0, rentTotal = 0, otherTotal = 0;
+                res.data.forEach(ex => {
+                    if (ex.category === "كهرباء" || ex.category === "مياه" || ex.category === "نت") utilitiesTotal += parseFloat(ex.amount) || 0;
+                    else if (ex.category === "إيجار") rentTotal += parseFloat(ex.amount) || 0;
+                    else otherTotal += parseFloat(ex.amount) || 0;
+                });
+                animateCounter(document.getElementById("exp-summary-utilities"), utilitiesTotal, ' ج.م');
+                animateCounter(document.getElementById("exp-summary-rent"), rentTotal, ' ج.م');
+                animateCounter(document.getElementById("exp-summary-other"), otherTotal, ' ج.م');
+                return;
+            }
+        } catch (e) { console.warn('Firebase error', e); }
     }
 
     tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
@@ -1353,7 +1419,21 @@ function handleFileProcessing(e) {
 }
 
 // ─── 5️⃣-ز: البنزينة ───
+let fuelBalanceCache = null;
+let fuelTxCache = null;
 async function loadFuelData() {
+    if (USE_FIREBASE && window.fbDbAPI) {
+        try {
+            const res = await fbDbAPI.getFuelBalance();
+            if (res.success) {
+                fuelBalanceCache = res.data;
+                animateCounter(document.getElementById("fuel-current-balance"), res.data.current_balance || 0, ' ج.م');
+                animateCounter(document.getElementById("fuel-current-price"), res.data.fuel_price_per_liter || 0, ' ج.م');
+                document.getElementById("fuel-last-updated").innerText = res.data.last_updated ? new Date(res.data.last_updated).toLocaleString('ar-EG') : "--";
+                return;
+            }
+        } catch (e) { console.warn('Firebase error', e); }
+    }
     try {
         const response = await callBackend("getFuelBalance");
         if (response && response.data) {
@@ -1368,6 +1448,16 @@ async function loadFuelData() {
 }
 
 async function loadFuelTransactions() {
+    if (USE_FIREBASE && window.fbDbAPI) {
+        try {
+            const res = await fbDbAPI.getFuelTransactions();
+            if (res.success) {
+                fuelTxCache = res.data;
+                renderFuelTransactions(res.data);
+                return;
+            }
+        } catch (e) { console.warn('Firebase error', e); }
+    }
     // Show loading in both tables
     const loadingRow = `<tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
     const tb1 = document.getElementById("table-fuel-transactions");
@@ -1448,6 +1538,17 @@ async function loadMaintenanceData(forceRefresh = false) {
     if (!forceRefresh && state.cache.maintenance) {
         renderMaintenanceTable(state.cache.maintenance);
         return;
+    }
+
+    if (USE_FIREBASE && window.fbDbAPI) {
+        try {
+            const res = await fbDbAPI.getMaintenance();
+            if (res.success && res.data) {
+                state.cache.maintenance = res.data;
+                renderMaintenanceTable(res.data);
+                return;
+            }
+        } catch (e) { console.warn('Firebase error', e); }
     }
 
     tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>';
@@ -1700,6 +1801,17 @@ async function loadVehiclesData(forceRefresh = false) {
         return;
     }
 
+    if (USE_FIREBASE && window.fbDbAPI) {
+        try {
+            const res = await fbDbAPI.getVehicles();
+            if (res.success && res.data) {
+                state.cache.vehicles = res.data;
+                renderVehiclesTable(res.data);
+                return;
+            }
+        } catch (e) { console.warn('Firebase error', e); }
+    }
+
     tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
 
     try {
@@ -1866,6 +1978,17 @@ async function loadDriversData(forceRefresh = false) {
         return;
     }
 
+    if (USE_FIREBASE && window.fbDbAPI) {
+        try {
+            const res = await fbDbAPI.getDrivers();
+            if (res.success && res.data) {
+                state.cache.drivers = res.data;
+                renderDriversTable(res.data);
+                return;
+            }
+        } catch (e) { console.warn('Firebase error', e); }
+    }
+
     tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
 
     try {
@@ -2025,6 +2148,17 @@ async function loadClientsData(forceRefresh = false) {
     if (!forceRefresh && state.cache.clients) {
         renderClientsTable(state.cache.clients);
         return;
+    }
+
+    if (USE_FIREBASE && window.fbDbAPI) {
+        try {
+            const res = await fbDbAPI.getClients();
+            if (res.success && res.data) {
+                state.cache.clients = res.data;
+                renderClientsTable(res.data);
+                return;
+            }
+        } catch (e) { console.warn('Firebase error', e); }
     }
 
     tbody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
@@ -2191,6 +2325,17 @@ async function loadBalanceData(forceRefresh = false) {
         return;
     }
 
+    if (USE_FIREBASE && window.fbDbAPI && !filterUserId) {
+        try {
+            const res = await fbDbAPI.getBalanceTransactions();
+            if (res.success) {
+                state.cache.balanceTransactions = res.data;
+                renderBalanceTable(res.data);
+                return;
+            }
+        } catch (e) { console.warn('Firebase error', e); }
+    }
+
     tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
 
     try {
@@ -2237,6 +2382,21 @@ async function populateBalanceUserFilter() {
     const select = document.getElementById("balance-filter-user");
     if (!select || select.dataset.loaded === "true") return;
 
+    if (USE_FIREBASE && window.fbDbAPI) {
+        try {
+            const res = await fbDbAPI.getUsers();
+            if (res.success && res.data) {
+                const select = document.getElementById("balance-filter-user");
+                if (!select) return;
+                select.innerHTML = '<option value="">كل المستخدمين</option>';
+                res.data.forEach(u => {
+                    if (u.status !== 'ACTIVE') return;
+                    select.innerHTML += `<option value="${u.user_id}">${u.full_name || u.username}</option>`;
+                });
+                return;
+            }
+        } catch (e) { console.warn('Firebase error', e); }
+    }
     try {
         const response = await callBackend("getUsers");
         if (response?.data) {
@@ -2313,6 +2473,26 @@ async function handleAddBalance() {
         confirmButtonText: 'إيداع',
         cancelButtonText: 'إلغاء',
         didOpen: async () => {
+            if (USE_FIREBASE && window.fbDbAPI) {
+                try {
+                    const res = await fbDbAPI.getUsers();
+                    if (res.success && res.data) {
+                        const select = document.getElementById("add-balance-user");
+                        if (select) {
+                            select.innerHTML = '<option value="">-- اختر المستخدم --</option>';
+                            res.data.forEach(user => {
+                                if (user.user_id !== state.user.id) {
+                                    const opt = document.createElement("option");
+                                    opt.value = user.user_id;
+                                    opt.textContent = user.full_name + " (" + user.username + ")";
+                                    select.appendChild(opt);
+                                }
+                            });
+                        }
+                        return;
+                    }
+                } catch (e) { console.warn('Firebase error', e); }
+            }
             try {
                 const response = await callBackend("getUsers");
                 if (response && response.data) {
@@ -2379,6 +2559,29 @@ async function handleTransferBalance() {
         confirmButtonText: 'تحويل',
         cancelButtonText: 'إلغاء',
         didOpen: async () => {
+            if (USE_FIREBASE && window.fbDbAPI) {
+                try {
+                    const res = await fbDbAPI.getUsers();
+                    if (res.success && res.data) {
+                        const selectFrom = document.getElementById("transfer-from-user");
+                        const selectTo = document.getElementById("transfer-to-user");
+                        if (selectFrom && selectTo) {
+                            selectFrom.innerHTML = '<option value="">-- اختر --</option>';
+                            selectTo.innerHTML = '<option value="">-- اختر --</option>';
+                            res.data.forEach(user => {
+                                if (user.user_id !== state.user.id) {
+                                    const opt = document.createElement("option");
+                                    opt.value = user.user_id;
+                                    opt.textContent = user.full_name + " (" + user.username + ")";
+                                    selectFrom.appendChild(opt.cloneNode(true));
+                                    selectTo.appendChild(opt.cloneNode(true));
+                                }
+                            });
+                        }
+                        return;
+                    }
+                } catch (e) { console.warn('Firebase error', e); }
+            }
             try {
                 const response = await callBackend("getUsers");
                 if (response && response.data) {
@@ -2432,6 +2635,17 @@ async function handleTransferBalance() {
 async function loadNotificationsData() {
     const container = document.getElementById("notifications-list");
     if (!container) return;
+    if (USE_FIREBASE && window.fbDbAPI) {
+        try {
+            const res = await fbDbAPI.getNotifications();
+            if (res.success && res.data) {
+                state.cache.notifications = res.data;
+                renderNotifications(res.data);
+                return;
+            }
+        } catch (e) { console.warn('Firebase error', e); }
+    }
+
     container.innerHTML = `<p class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</p>`;
 
     try {
@@ -2522,6 +2736,17 @@ async function loadUsersData(forceRefresh = false) {
     if (!forceRefresh && state.cache.users) {
         renderUsersTable(state.cache.users);
         return;
+    }
+
+    if (USE_FIREBASE && window.fbDbAPI) {
+        try {
+            const res = await fbDbAPI.getUsers();
+            if (res.success && res.data) {
+                state.cache.users = res.data;
+                renderUsersTable(res.data);
+                return;
+            }
+        } catch (e) { console.warn('Firebase error', e); }
     }
 
     tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
