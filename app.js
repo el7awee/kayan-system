@@ -178,7 +178,8 @@ function bindUIEvents() {
     document.getElementById("btn-generate-report")?.addEventListener("click", generateReport);
     document.getElementById("report-type")?.addEventListener("change", () => {
         const isMonthly = document.getElementById("report-type")?.value === "monthlyTrends";
-        document.getElementById("report-year-toggle")?.checked &&= false;
+        const ryt = document.getElementById("report-year-toggle");
+        if (ryt) ryt.checked = false;
         if (isMonthly) document.getElementById("report-year-selector")?.classList.remove("hidden");
     });
     document.getElementById("report-year-toggle")?.addEventListener("change", function () {
