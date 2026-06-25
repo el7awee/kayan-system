@@ -83,37 +83,27 @@ function uploadBase64FileToDrive(base64Data, fileName) {
     let decodedBytes = Utilities.base64Decode(cleanBase64);
     let blob = Utilities.newBlob(decodedBytes, contentType, safeFileName);
     
-    // البحث عن فولدر الإيصالات أو إنشاؤه
-    let folder = getOrCreateReceiptsFolder();
-    let file = folder.createFile(blob);
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    // جرب الفولدر المخصص، لو فشل احفظ في الجذر
+    let folder;
+    try {
+      folder = DriveApp.getFolderById(EXPENSES_DRIVE_FOLDER_ID);
+    } catch (e) {
+      // تجاهل — هينشئ في الجذر
+    }
     
+    let file;
+    if (folder) {
+      file = folder.createFile(blob);
+    } else {
+      file = DriveApp.createFile(blob);
+    }
+    
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     return file.getId();
     
   } catch (driveError) {
     throwBusinessError("CLOUD_STORAGE_ERROR", "فشل النظام في معالجة ورفع الملف: " + driveError.message);
   }
-}
-
-/**
- * البحث عن فولدر الإيصالات أو إنشاؤه تلقائياً
- */
-function getOrCreateReceiptsFolder() {
-  const FOLDER_NAME = "منظومة الكيان - إيصالات";
-  
-  // 1. جرب الفولدر المحدد في الإعدادات
-  if (EXPENSES_DRIVE_FOLDER_ID && EXPENSES_DRIVE_FOLDER_ID !== "YOUR_GOOGLE_DRIVE_FOLDER_ID_HERE") {
-    try {
-      return DriveApp.getFolderById(EXPENSES_DRIVE_FOLDER_ID);
-    } catch (e) { /* مش موجود — هنستمر */ }
-  }
-  
-  // 2. دور على فولدر بنفس الاسم
-  let folders = DriveApp.getFoldersByName(FOLDER_NAME);
-  if (folders.hasNext()) return folders.next();
-  
-  // 3. أنشئ الفولدر
-  return DriveApp.createFolder(FOLDER_NAME);
 }
 
 /**
