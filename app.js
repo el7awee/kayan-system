@@ -389,13 +389,14 @@ async function callBackend(action, parameters = {}) {
     // إضافة باقي المعاملات
     for (const [key, value] of Object.entries(parameters)) {
         if (key === "bodyPayload") {
-            // لو فيه ملفات مرفقة
             if (value && typeof value === 'object') {
                 for (const [fileKey, fileValue] of Object.entries(value)) {
                     if (fileValue) {
                         formData.append(fileKey, fileValue);
                     }
                 }
+            } else if (value) {
+                formData.append(key, value);
             }
         } else {
             formData.append(key, value);

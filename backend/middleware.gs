@@ -71,7 +71,9 @@ const ROLE_PERMISSIONS = {
     'updateTrip',
     // 🔧 الصيانة
     'getMaintenance', 'getVehicleMaintenance', 'getTripMaintenance',
-    'updateMaintenance', 'deleteMaintenance'
+    'updateMaintenance', 'deleteMaintenance',
+    // 🔐 الصلاحيات
+    'getPermissions', 'savePermissions'
   ],
   'Operations': [
     // الأوبريشن يفتح الرحلة فقط؛ التصفية والإغلاق من اختصاص المحاسب (settleTripFinancials)
