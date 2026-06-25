@@ -346,43 +346,33 @@ async function callBackend(action, parameters = {}) {
         url.searchParams.append("User_Role", state.user.role || "Operations");
     }
 
-    // ✅ بناء FormData لإرسال كل البيانات (بما فيها action)
-    const formData = new FormData();
-    formData.append("action", action); // 🔥 أهم خطوة
+    // ✅ بناء URLSearchParams (application/x-www-form-urlencoded) لتجنب CORS preflight
+    const body = new URLSearchParams();
+    body.append("action", action);
 
-    // إضافة باقي المعاملات
     for (const [key, value] of Object.entries(parameters)) {
         if (key === "bodyPayload") {
-            // لو فيه ملفات مرفقة
             if (value && typeof value === 'object') {
                 for (const [fileKey, fileValue] of Object.entries(value)) {
-                    if (fileValue) {
-                        formData.append(fileKey, fileValue);
-                    }
+                    if (fileValue) body.append(fileKey, fileValue);
                 }
             }
         } else {
-            formData.append(key, value);
+            body.append(key, value);
         }
     }
 
-    // إضافة Idempotency Key + CSRF Token لعمليات الكتابة
     const isWriteAction = ["createTrip", "updateTrip", "settleTripFinancials", "addExpense", "createUser", "toggleUserStatus", "updateUserRole", "deleteUser", "resetUserPassword", "createVehicle", "updateVehicle", "deleteVehicle", "createDriver", "updateDriverData", "deleteDriver", "createClient", "updateClient", "deleteClient", "addFuelBalance", "updateFuelPrice", "markNotificationRead", "markAllNotificationsRead", "deleteNotification", "addBalance", "transferBalance"].includes(action);
     if (isWriteAction) {
-        const timestamp = Date.now();
-        const randomHex = Math.floor(Math.random() * 0xffffff).toString(16);
-        const idempotencyKey = `IDMP-${timestamp}-${randomHex}`;
-        formData.append("Idempotency_Key", idempotencyKey);
-        // 🛡️ إرسال CSRF Token لحماية عمليات الكتابة
-        if (state.user.csrfToken) {
-            formData.append("CSRF_Token", state.user.csrfToken);
-        }
+        body.append("Idempotency_Key", `IDMP-${Date.now()}-${Math.floor(Math.random() * 0xffffff).toString(16)}`);
+        if (state.user.csrfToken) body.append("CSRF_Token", state.user.csrfToken);
     }
 
     const fetchOptions = {
         method: "POST",
         mode: "cors",
-        body: formData // ✅ إرسال FormData كامل
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString()
     };
 
     const response = await fetch(url.toString(), fetchOptions);
