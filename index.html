@@ -859,6 +859,11 @@
                                 </tbody>
                             </table>
                         </div>
+                        <div id="trips-pagination" class="p-3 border-t border-border flex items-center justify-center gap-2 text-xs text-muted hidden">
+                            <button class="px-3 py-1 rounded-lg bg-secondary hover:bg-hover transition pag-prev">&larr;</button>
+                            <span class="px-2 pag-info"></span>
+                            <button class="px-3 py-1 rounded-lg bg-secondary hover:bg-hover transition pag-next">&rarr;</button>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -987,6 +992,11 @@
                         </div>
                         <div class="p-3 border-t border-border flex items-center justify-between text-[10px] text-muted">
                             <span id="exp-table-count">0 مصروف</span>
+                            <span id="expenses-pagination" class="flex items-center gap-2">
+                                <button class="px-3 py-1 rounded-lg bg-secondary hover:bg-hover transition pag-prev hidden">&larr;</button>
+                                <span class="pag-info"></span>
+                                <button class="px-3 py-1 rounded-lg bg-secondary hover:bg-hover transition pag-next hidden">&rarr;</button>
+                            </span>
                         </div>
                     </div>
                 </div>

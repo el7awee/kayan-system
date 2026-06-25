@@ -1028,7 +1028,7 @@ async function loadTripsData(forceRefresh = false) {
     if (!tbody) return;
 
     if (!forceRefresh && state.cache.trips?.length) {
-        renderTripsTable(state.cache.trips);
+        renderTripsTable();
         return;
     }
 
@@ -1038,7 +1038,7 @@ async function loadTripsData(forceRefresh = false) {
             if (res.success && res.data?.length) {
                 state.cache.trips = res.data;
                 state.activeTrips = res.data;
-                renderTripsTable(res.data);
+                renderTripsTable();
                 return;
             }
         } catch (e) { console.warn('Firebase error', e); }
@@ -1050,25 +1050,69 @@ async function loadTripsData(forceRefresh = false) {
         const response = await callBackend("getTrips", { Limit: 50 });
         state.cache.trips = response.data || [];
         state.activeTrips = state.cache.trips;
-        renderTripsTable(state.cache.trips);
+        renderTripsTable();
     } catch (err) {
         tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-rose-500">فشل جلب البيانات</td></tr>`;
         console.error("loadTripsData Error:", err);
     }
 }
 
-function renderTripsTable(trips) {
+// ─── Pagination State ───
+const PAGINATION = {
+    trips: { page: 1, size: 50 },
+    expenses: { page: 1, size: 50 }
+};
+
+function getPaginatedData(dataKey, filterFn = null) {
+    const cfg = PAGINATION[dataKey];
+    if (!cfg) return { rows: [], total: 0, page: 1, pages: 1 };
+    let all = state.cache[dataKey] || [];
+    if (filterFn) all = all.filter(filterFn);
+    const total = all.length;
+    const pages = Math.max(1, Math.ceil(total / cfg.size));
+    if (cfg.page > pages) cfg.page = pages;
+    const start = (cfg.page - 1) * cfg.size;
+    const rows = all.slice(start, start + cfg.size);
+    return { rows, total, page: cfg.page, pages, size: cfg.size };
+}
+
+function renderPagination(dataKey, containerId, renderFn) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const info = getPaginatedData(dataKey);
+    if (info.pages <= 1) {
+        container.classList.add('hidden');
+        return;
+    }
+    container.classList.remove('hidden');
+    container.querySelector('.pag-info').textContent = `الصفحة ${info.page} من ${info.pages} (${info.total})`;
+    container.querySelector('.pag-prev').onclick = () => {
+        if (PAGINATION[dataKey].page > 1) {
+            PAGINATION[dataKey].page--;
+            renderFn();
+        }
+    };
+    container.querySelector('.pag-next').onclick = () => {
+        if (PAGINATION[dataKey].page < info.pages) {
+            PAGINATION[dataKey].page++;
+            renderFn();
+        }
+    };
+}
+
+function renderTripsTable() {
     const tbody = document.getElementById("table-trips-body");
     if (!tbody) return;
 
-    const fragment = document.createDocumentFragment();
-    const validTrips = trips.filter(t => t[0] && t[0] !== "Trip_ID" && !(t[13] === true || t[13] === "TRUE"));
+    const { rows: validTrips, total } = getPaginatedData('trips', t => t[0] && t[0] !== "Trip_ID" && !(t[13] === true || t[13] === "TRUE"));
 
     if (validTrips.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-muted">لا يوجد رحلات</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-muted">${total > 0 ? 'لا توجد نتائج في هذه الصفحة' : 'لا يوجد رحلات'}</td></tr>`;
+        renderPagination('trips', 'trips-pagination', renderTripsTable);
         return;
     }
 
+    const fragment = document.createDocumentFragment();
     validTrips.forEach(trip => {
         const tripId = trip[0];
         const status = trip[7] || "OPEN";
@@ -1114,6 +1158,7 @@ function renderTripsTable(trips) {
 
     tbody.innerHTML = "";
     tbody.appendChild(fragment);
+    renderPagination('trips', 'trips-pagination', renderTripsTable);
     reapplyTableFilter('table-trips-body');
 }
 
@@ -1488,6 +1533,7 @@ async function loadExpensesData(forceRefresh = false) {
 function renderExpensesTable(expenses) {
     const tbody = document.getElementById("table-expenses-body");
     const countEl = document.getElementById("exp-table-count");
+    const pagEl = document.getElementById("expenses-pagination");
     if (!tbody) return;
     
     const catFilter = document.getElementById("filter-expense-category")?.value;
@@ -1507,10 +1553,18 @@ function renderExpensesTable(expenses) {
     
     if (!filtered.length) {
         tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-muted">لا توجد مصروفات</td></tr>';
+        if (pagEl) { pagEl.querySelector('.pag-prev').classList.add('hidden'); pagEl.querySelector('.pag-next').classList.add('hidden'); pagEl.querySelector('.pag-info').textContent = ''; }
         return;
     }
+
+    const pageSize = 50;
+    const totalPages = Math.ceil(filtered.length / pageSize);
+    const page = Math.min(PAGINATION.expenses.page, totalPages);
+    PAGINATION.expenses.page = page;
+    const start = (page - 1) * pageSize;
+    const pageRows = filtered.slice(start, start + pageSize);
     
-    tbody.innerHTML = filtered.map(ex => {
+    tbody.innerHTML = pageRows.map(ex => {
         const isOwner = state.user.id === ex.created_by;
         const showActions = state.user.role === "Admin" || state.user.role === "Manager" || isOwner;
         const hasReceipt = ex.receipt_file_id && ex.receipt_file_id !== "0" && ex.receipt_file_id !== "";
@@ -1538,6 +1592,18 @@ function renderExpensesTable(expenses) {
     tbody.querySelectorAll(".delete-expense-btn").forEach(btn => {
         btn.addEventListener("click", () => handleExpenseDelete(btn.dataset.id));
     });
+
+    // Pagination controls
+    if (pagEl) {
+        const prevBtn = pagEl.querySelector('.pag-prev');
+        const nextBtn = pagEl.querySelector('.pag-next');
+        const infoEl = pagEl.querySelector('.pag-info');
+        infoEl.textContent = `الصفحة ${page} من ${totalPages}`;
+        prevBtn.classList.toggle('hidden', page <= 1);
+        nextBtn.classList.toggle('hidden', page >= totalPages);
+        prevBtn.onclick = () => { PAGINATION.expenses.page--; renderExpensesTable(expenses); };
+        nextBtn.onclick = () => { PAGINATION.expenses.page++; renderExpensesTable(expenses); };
+    }
 }
 
 function getCategoryBadge(cat) {
