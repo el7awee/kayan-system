@@ -43,6 +43,14 @@ const state = {
 // متغير للتحميل مرة واحدة
 let dropdownsLoaded = false;
 
+// دالة تعقيم HTML (منع XSS)
+function esc(str) {
+    if (str === null || str === undefined) return "";
+    const div = document.createElement("div");
+    div.textContent = String(str);
+    return div.innerHTML;
+}
+
 // ─── 2️⃣ إدارة الأحداث والتشغيل الأولي ───
 document.addEventListener("DOMContentLoaded", () => {
     initApp();
@@ -109,6 +117,10 @@ function bindUIEvents() {
     document.getElementById("nav-clients")?.addEventListener("click", () => { switchView("view-clients"); loadClientsData(); });
     document.getElementById("nav-balance")?.addEventListener("click", () => { switchView("view-balance"); loadBalanceData(); });
     document.getElementById("nav-notifications")?.addEventListener("click", () => { switchView("view-notifications"); loadNotificationsData(); });
+    document.getElementById("nav-reports")?.addEventListener("click", () => {
+        switchView("view-reports");
+        loadReports();
+    });
     document.getElementById("nav-settings")?.addEventListener("click", () => {
         if (state.user.role === "Admin" || state.user.role === "Manager") {
             switchView("view-settings");
@@ -161,6 +173,20 @@ function bindUIEvents() {
 
     // رفع الملفات
     document.getElementById("expense-file-input")?.addEventListener("change", handleFileProcessing);
+
+    // 📊 التقارير
+    document.getElementById("btn-generate-report")?.addEventListener("click", generateReport);
+    document.getElementById("report-type")?.addEventListener("change", () => {
+        const isMonthly = document.getElementById("report-type")?.value === "monthlyTrends";
+        document.getElementById("report-year-toggle")?.checked &&= false;
+        if (isMonthly) document.getElementById("report-year-selector")?.classList.remove("hidden");
+    });
+    document.getElementById("report-year-toggle")?.addEventListener("change", function () {
+        const sel = document.getElementById("report-year-selector");
+        if (sel) sel.classList.toggle("hidden", !this.checked);
+        if (this.checked) populateReportYearSelect();
+    });
+    document.getElementById("btn-export-report")?.addEventListener("click", exportReportToExcel);
 }
 
 // ─── 2️⃣-ب: شريط التنقل السفلي للموبايل ───
@@ -196,7 +222,8 @@ function bindBottomNav() {
             "view-drivers": () => loadDriversData(),
             "view-clients": () => loadClientsData(),
             "view-balance": () => loadBalanceData(),
-            "view-notifications": () => loadNotificationsData()
+            "view-notifications": () => loadNotificationsData(),
+            "view-reports": () => loadReports()
         };
         // settings لها شرط صلاحية منفصل — لا يتم تضمينها هنا
         if (viewId === "view-settings") {
@@ -225,6 +252,7 @@ function bindBottomNav() {
                 "view-drivers": () => loadDriversData(),
                 "view-clients": () => loadClientsData(),
                 "view-notifications": () => loadNotificationsData(),
+                "view-reports": () => loadReports(),
                 "view-settings": () => { if (["Admin","Manager"].includes(state.user.role)) loadUsersData(); }
             };
             const loader = moreLoaders[viewId];
@@ -258,7 +286,7 @@ function updateBottomNavActiveState(viewId) {
 function switchView(viewId) {
     const sections = ["view-login", "view-dashboard", "view-trips", "view-expenses", 
                       "view-fuel", "view-vehicles", "view-drivers", "view-clients",
-                      "view-balance", "view-notifications", "view-settings"];
+                      "view-balance", "view-notifications", "view-reports", "view-settings"];
     sections.forEach(id => {
         const sec = document.getElementById(id);
         if (sec) sec.classList.add("hidden");
@@ -287,6 +315,7 @@ function updateSidebarActiveState(viewId) {
         "view-clients": "nav-clients",
         "view-balance": "nav-balance",
         "view-notifications": "nav-notifications",
+        "view-reports": "nav-reports",
         "view-settings": "nav-settings"
     };
 
@@ -2336,6 +2365,399 @@ async function handleLogout() {
         if (usernameInput) usernameInput.value = "";
         if (passwordInput) passwordInput.value = "";
     }
+}
+
+// ─── 📊 محرك التقارير ───
+
+let reportChartInstance = null;
+
+function populateReportYearSelect() {
+    const sel = document.getElementById("report-year");
+    if (!sel || sel.options.length > 0) return;
+    const y = new Date().getFullYear();
+    for (let i = y; i >= y - 5; i--) {
+        const opt = document.createElement("option");
+        opt.value = i; opt.textContent = i;
+        sel.appendChild(opt);
+    }
+}
+
+function loadReports() {
+    document.getElementById("report-summary")?.classList.add("hidden");
+    document.getElementById("report-chart-container")?.classList.add("hidden");
+    document.getElementById("btn-export-report-chart")?.classList.add("hidden");
+    const tbody = document.getElementById("report-table-body");
+    if (tbody) tbody.innerHTML = '<tr><td colspan="2" class="p-8 text-center text-muted">اختر التقرير واضغط "توليد التقرير"</td></tr>';
+    populateReportYearSelect();
+}
+
+async function generateReport() {
+    const type = document.getElementById("report-type")?.value;
+    const fromDate = document.getElementById("report-from-date")?.value || "";
+    const toDate = document.getElementById("report-to-date")?.value || "";
+    const yearToggle = document.getElementById("report-year-toggle")?.checked;
+    const year = document.getElementById("report-year")?.value || new Date().getFullYear();
+    
+    const btn = document.getElementById("btn-generate-report");
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin ml-1"></i> جاري التوليد...'; }
+    
+    try {
+        let params = {};
+        if (type === "monthlyTrends" || yearToggle) {
+            params.year = year;
+        } else {
+            if (fromDate) params.fromDate = fromDate;
+            if (toDate) params.toDate = toDate;
+        }
+        
+        const actionMap = {
+            profitLoss: "getProfitLoss",
+            expenseBreakdown: "getExpenseBreakdown",
+            fuelSummary: "getFuelSummary",
+            driverPerformance: "getDriverPerformance",
+            clientActivity: "getClientActivity",
+            monthlyTrends: "getMonthlyTrends",
+            vehicleUtilization: "getVehicleUtilization"
+        };
+        
+        const action = actionMap[type];
+        if (!action) { Swal.fire({ icon: 'error', title: 'تقرير غير معروف' }); return; }
+        
+        const result = await callBackend(action, params);
+        if (!result || !result.success) {
+            Swal.fire({ icon: 'error', title: 'فشل التقرير', text: result?.message || 'خطأ غير معروف' });
+            return;
+        }
+        
+        renderReport(type, result.data);
+    } catch (err) {
+        handleStandardError(err);
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-chart-line ml-1"></i> توليد التقرير'; }
+    }
+}
+
+function renderReport(type, data) {
+    renderReportSummary(type, data);
+    renderReportChart(type, data);
+    renderReportTable(type, data);
+    document.getElementById("btn-export-report")?.classList.remove("hidden");
+}
+
+function renderReportSummary(type, data) {
+    const container = document.getElementById("report-summary");
+    if (!container) return;
+    
+    let labels = ["الإيرادات", "المصروفات", "صافي الربح", "الهامش"];
+    let values = ["0 ج.م", "0 ج.م", "0 ج.م", "0%"];
+    
+    if (data.summary) {
+        const s = data.summary;
+        if (type === "profitLoss") {
+            values = [
+                (s.totalRevenue || 0).toLocaleString() + " ج.م",
+                (s.totalExpenses || 0).toLocaleString() + " ج.م",
+                (s.netProfit || 0).toLocaleString() + " ج.م",
+                (s.margin || 0) + "%"
+            ];
+            if (s.netProfit < 0) labels[2] = "صافي الخسارة";
+            labels[3] = "الهامش %";
+        } else if (type === "fuelSummary") {
+            labels = ["إجمالي التكلفة", "إجمالي اللترات", "العمليات", "متوسط السعر"];
+            values = [
+                (s.totalCost || 0).toLocaleString() + " ج.م",
+                (s.totalLiters || 0).toLocaleString() + " لتر",
+                (s.transactions || 0).toLocaleString(),
+                (s.avgPrice || 0).toFixed(2) + " ج.م/لتر"
+            ];
+        } else if (type === "driverPerformance") {
+            labels = ["إجمالي الإيرادات", "عدد الرحلات", "عدد السائقين", "متوسط الرحلة"];
+            values = [
+                (s.totalRevenue || 0).toLocaleString() + " ج.م",
+                (s.totalTrips || 0).toLocaleString(),
+                (s.driverCount || 0).toLocaleString(),
+                s.totalTrips > 0 ? Math.round(s.totalRevenue / s.totalTrips).toLocaleString() + " ج.م" : "0 ج.م"
+            ];
+        } else if (type === "clientActivity") {
+            labels = ["إجمالي الإيرادات", "عدد الرحلات", "عدد العملاء", "متوسط الرحلة"];
+            values = [
+                (s.totalRevenue || 0).toLocaleString() + " ج.م",
+                (s.totalTrips || 0).toLocaleString(),
+                (s.clientCount || 0).toLocaleString(),
+                s.totalTrips > 0 ? Math.round(s.totalRevenue / s.totalTrips).toLocaleString() + " ج.م" : "0 ج.م"
+            ];
+        } else if (type === "monthlyTrends") {
+            labels = ["إجمالي الإيرادات", "إجمالي المصروفات", "صافي السنة", "أشهر نشطة"];
+            values = [
+                (s.totalRevenue || 0).toLocaleString() + " ج.م",
+                (s.totalExpense || 0).toLocaleString() + " ج.م",
+                (s.net || 0).toLocaleString() + " ج.م",
+                (s.activeMonths || 0) + "/12"
+            ];
+        } else if (type === "expenseBreakdown") {
+            labels = ["إجمالي المصروفات", "عدد المعاملات", "", ""];
+            values = [(data.total || 0).toLocaleString() + " ج.م", (data.count || 0).toLocaleString(), "", ""];
+        } else if (type === "vehicleUtilization") {
+            labels = ["إجمالي الإيرادات", "عدد الرحلات", "عدد العربيات", ""];
+            values = [
+                (s.totalTrips ? data.breakdown.reduce((a,b) => a + (b.revenue||0), 0) : 0).toLocaleString() + " ج.م",
+                (s.totalTrips || 0).toLocaleString(),
+                (data.totalVehicles || 0).toLocaleString(),
+                ""
+            ];
+        }
+    }
+    
+    const ids = ["r-summary-1-value", "r-summary-2-value", "r-summary-3-value", "r-summary-4-value"];
+    const labelIds = ["r-summary-1-label", "r-summary-2-label", "r-summary-3-label", "r-summary-4-label"];
+    
+    for (let i = 0; i < 4; i++) {
+        const el = document.getElementById(ids[i]);
+        if (el) el.textContent = values[i] || "—";
+        const lbl = document.getElementById(labelIds[i]);
+        if (lbl) lbl.textContent = labels[i] || "";
+    }
+    
+    container.classList.remove("hidden");
+}
+
+function renderReportChart(type, data) {
+    const container = document.getElementById("report-chart-container");
+    if (!container) return;
+    
+    const canvas = document.getElementById("report-chart");
+    if (!canvas) return;
+    
+    if (reportChartInstance) reportChartInstance.destroy();
+    
+    let labels = [], datasets = [];
+    const bgColor = "#f59e0b";
+    const bgColor2 = "#ef4444";
+    const bgColor3 = "#22c55e";
+    
+    if (type === "profitLoss" && data.chart) {
+        labels = data.chart.labels || [];
+        datasets = [{
+            label: "القيمة (ج.م)",
+            data: data.chart.values || [],
+            backgroundColor: [bgColor3, bgColor2, "#3b82f6"],
+            borderRadius: 6
+        }];
+    } else if (type === "expenseBreakdown" && data.chart) {
+        const colors = ["#f59e0b", "#ef4444", "#3b82f6", "#22c55e", "#8b5cf6", "#ec4899", "#14b8a6"];
+        labels = data.chart.labels || [];
+        datasets = [{
+            label: "القيمة (ج.م)",
+            data: data.chart.values || [],
+            backgroundColor: labels.map((_, i) => colors[i % colors.length]),
+            borderRadius: 6
+        }];
+    } else if (type === "fuelSummary" && data.chart) {
+        labels = data.chart.labels || [];
+        datasets = [{
+            label: "تكلفة الوقود (ج.م)",
+            data: data.chart.values || [],
+            backgroundColor: "#3b82f6",
+            borderRadius: 6
+        }];
+    } else if (type === "driverPerformance" && data.chart) {
+        labels = data.chart.labels || [];
+        datasets = [{
+            label: "الإيرادات (ج.م)",
+            data: data.chart.values || [],
+            backgroundColor: "#22c55e",
+            borderRadius: 6
+        }];
+    } else if (type === "clientActivity" && data.chart) {
+        labels = data.chart.labels || [];
+        datasets = [{
+            label: "الإيرادات (ج.م)",
+            data: data.chart.values || [],
+            backgroundColor: "#8b5cf6",
+            borderRadius: 6
+        }];
+    } else if (type === "monthlyTrends" && data.chart) {
+        labels = data.chart.labels || [];
+        datasets = [
+            { label: "الإيرادات", data: data.chart.revenue || [], backgroundColor: "#22c55e", borderRadius: 4 },
+            { label: "المصروفات", data: data.chart.expense || [], backgroundColor: "#ef4444", borderRadius: 4 },
+            { label: "صافي الربح", data: data.chart.net || [], backgroundColor: "#3b82f6", borderRadius: 4 }
+        ];
+    } else if (type === "vehicleUtilization" && data.chart) {
+        labels = data.chart.labels || [];
+        datasets = [{
+            label: "الإيرادات (ج.م)",
+            data: data.chart.values || [],
+            backgroundColor: "#f59e0b",
+            borderRadius: 6
+        }];
+    }
+    
+    if (labels.length === 0) { container.classList.add("hidden"); return; }
+    
+    const ctx = canvas.getContext("2d");
+    reportChartInstance = new Chart(ctx, {
+        type: type === "expenseBreakdown" ? "pie" : type === "profitLoss" ? "bar" : "bar",
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    labels: { color: "#94a3b8", font: { family: "Tajawal" } }
+                }
+            },
+            scales: type !== "expenseBreakdown" ? {
+                y: { beginAtZero: true, ticks: { color: "#64748b", font: { family: "Tajawal" } }, grid: { color: "#334155" } },
+                x: { ticks: { color: "#94a3b8", font: { family: "Tajawal" } }, grid: { display: false } }
+            } : undefined
+        }
+    });
+    
+    container.classList.remove("hidden");
+    document.getElementById("btn-export-report-chart")?.classList.remove("hidden");
+}
+
+function renderReportTable(type, data) {
+    const thead = document.getElementById("report-table-head");
+    const tbody = document.getElementById("report-table-body");
+    const title = document.getElementById("report-table-title");
+    if (!thead || !tbody) return;
+    
+    if (type === "profitLoss" && data.expenseByCategory) {
+        title.textContent = "P&L - تفاصيل المصروفات حسب التصنيف";
+        thead.innerHTML = '<tr><th class="p-4">التصنيف</th><th class="p-4">القيمة</th></tr>';
+        const cats = Object.keys(data.expenseByCategory).sort();
+        if (cats.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="2" class="p-8 text-center text-muted">لا توجد بيانات</td></tr>';
+            return;
+        }
+        let html = "";
+        cats.forEach(c => {
+            html += `<tr><td class="p-4" data-label="التصنيف">${esc(c)}</td><td class="p-4 font-mono" data-label="القيمة">${Math.round(data.expenseByCategory[c]).toLocaleString()} ج.م</td></tr>`;
+        });
+        tbody.innerHTML = html;
+        
+    } else if (type === "expenseBreakdown" && data.breakdown) {
+        title.textContent = "تحليل المصروفات";
+        thead.innerHTML = '<tr><th class="p-4">التصنيف</th><th class="p-4">القيمة</th><th class="p-4">النسبة</th></tr>';
+        const rows = data.breakdown;
+        if (rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" class="p-8 text-center text-muted">لا توجد بيانات</td></tr>';
+            return;
+        }
+        let html = "";
+        rows.forEach(r => {
+            html += `<tr><td class="p-4" data-label="التصنيف">${esc(r.category)}</td><td class="p-4 font-mono" data-label="القيمة">${r.amount.toLocaleString()} ج.م</td><td class="p-4 font-mono" data-label="النسبة">${r.percentage}%</td></tr>`;
+        });
+        tbody.innerHTML = html;
+        
+    } else if (type === "fuelSummary" && data.breakdown) {
+        title.textContent = "تقرير البنزينة حسب العربية";
+        thead.innerHTML = '<tr><th class="p-4">العربية</th><th class="p-4">اللترات</th><th class="p-4">التكلفة</th><th class="p-4">العمليات</th><th class="p-4">متوسط السعر</th></tr>';
+        const rows = data.breakdown;
+        if (rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-muted">لا توجد بيانات</td></tr>';
+            return;
+        }
+        let html = "";
+        rows.forEach(r => {
+            html += `<tr><td class="p-4" data-label="العربية">${esc(r.vehicle)}</td><td class="p-4 font-mono" data-label="اللترات">${r.liters.toLocaleString()}</td><td class="p-4 font-mono" data-label="التكلفة">${r.cost.toLocaleString()} ج.م</td><td class="p-4" data-label="العمليات">${r.count}</td><td class="p-4 font-mono" data-label="متوسط السعر">${r.avgPrice} ج.م</td></tr>`;
+        });
+        tbody.innerHTML = html;
+        
+    } else if (type === "driverPerformance" && data.breakdown) {
+        title.textContent = "أداء السائقين";
+        thead.innerHTML = '<tr><th class="p-4">السائق</th><th class="p-4">الرحلات</th><th class="p-4">المغلقة</th><th class="p-4">الإيرادات</th><th class="p-4">متوسط الرحلة</th><th class="p-4">السلفة</th></tr>';
+        const rows = data.breakdown;
+        if (rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center text-muted">لا توجد بيانات</td></tr>';
+            return;
+        }
+        let html = "";
+        rows.forEach(r => {
+            html += `<tr><td class="p-4" data-label="السائق">${esc(r.driverName)}</td><td class="p-4" data-label="الرحلات">${r.trips}</td><td class="p-4" data-label="المغلقة">${r.closedTrips}</td><td class="p-4 font-mono" data-label="الإيرادات">${r.revenue.toLocaleString()} ج.م</td><td class="p-4 font-mono" data-label="متوسط الرحلة">${r.avgPerTrip.toLocaleString()} ج.م</td><td class="p-4 font-mono" data-label="السلفة">${r.currentAdvance.toLocaleString()} ج.م</td></tr>`;
+        });
+        tbody.innerHTML = html;
+        
+    } else if (type === "clientActivity" && data.breakdown) {
+        title.textContent = "نشاط العملاء";
+        thead.innerHTML = '<tr><th class="p-4">العميل</th><th class="p-4">الرحلات</th><th class="p-4">المغلقة</th><th class="p-4">الإيرادات</th><th class="p-4">متوسط الرحلة</th></tr>';
+        const rows = data.breakdown;
+        if (rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-muted">لا توجد بيانات</td></tr>';
+            return;
+        }
+        let html = "";
+        rows.forEach(r => {
+            html += `<tr><td class="p-4" data-label="العميل">${esc(r.clientName)}</td><td class="p-4" data-label="الرحلات">${r.trips}</td><td class="p-4" data-label="المغلقة">${r.closedTrips}</td><td class="p-4 font-mono" data-label="الإيرادات">${r.revenue.toLocaleString()} ج.م</td><td class="p-4 font-mono" data-label="متوسط الرحلة">${r.avgPerTrip.toLocaleString()} ج.م</td></tr>`;
+        });
+        tbody.innerHTML = html;
+        
+    } else if (type === "monthlyTrends" && data.breakdown) {
+        title.textContent = `الاتجاهات الشهرية لسنة ${data.year}`;
+        thead.innerHTML = '<tr><th class="p-4">الشهر</th><th class="p-4">الرحلات</th><th class="p-4">الإيرادات</th><th class="p-4">المصروفات</th><th class="p-4">صافي الربح</th></tr>';
+        const rows = data.breakdown;
+        let html = "";
+        rows.forEach(r => {
+            if (r.count === 0) return;
+            const netClass = r.net >= 0 ? "text-green-400" : "text-rose-400";
+            html += `<tr><td class="p-4" data-label="الشهر">${esc(r.monthName)}</td><td class="p-4" data-label="الرحلات">${r.count}</td><td class="p-4 font-mono text-green-400" data-label="الإيرادات">${r.revenue.toLocaleString()} ج.م</td><td class="p-4 font-mono text-rose-400" data-label="المصروفات">${r.expense.toLocaleString()} ج.م</td><td class="p-4 font-mono ${netClass}" data-label="صافي الربح">${r.net.toLocaleString()} ج.م</td></tr>`;
+        });
+        if (html === "") { html = '<tr><td colspan="5" class="p-8 text-center text-muted">لا توجد بيانات لهذه السنة</td></tr>'; }
+        tbody.innerHTML = html;
+        
+    } else if (type === "vehicleUtilization" && data.breakdown) {
+        title.textContent = "استغلال العربيات";
+        thead.innerHTML = '<tr><th class="p-4">العربية</th><th class="p-4">الرحلات</th><th class="p-4">المغلقة</th><th class="p-4">الإيرادات</th><th class="p-4">تكلفة الوقود</th><th class="p-4">صافي الربح</th><th class="p-4">متوسط الرحلة</th></tr>';
+        const rows = data.breakdown;
+        if (rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-muted">لا توجد بيانات</td></tr>';
+            return;
+        }
+        let html = "";
+        rows.forEach(r => {
+            const netClass = r.net >= 0 ? "text-green-400" : "text-rose-400";
+            html += `<tr><td class="p-4" data-label="العربية">${esc(r.vehicleName)}</td><td class="p-4" data-label="الرحلات">${r.trips}</td><td class="p-4" data-label="المغلقة">${r.closedTrips}</td><td class="p-4 font-mono" data-label="الإيرادات">${r.revenue.toLocaleString()} ج.م</td><td class="p-4 font-mono" data-label="تكلفة الوقود">${r.fuelCost.toLocaleString()} ج.م</td><td class="p-4 font-mono ${netClass}" data-label="صافي الربح">${r.net.toLocaleString()} ج.م</td><td class="p-4 font-mono" data-label="متوسط الرحلة">${r.avgPerTrip.toLocaleString()} ج.م</td></tr>`;
+        });
+        tbody.innerHTML = html;
+    }
+}
+
+function exportReportToExcel() {
+    const type = document.getElementById("report-type")?.value;
+    const tbody = document.getElementById("report-table-body");
+    if (!tbody) return;
+    
+    const rows = tbody.querySelectorAll("tr");
+    if (rows.length <= 1) { Swal.fire({ icon: 'warning', title: 'لا توجد بيانات للتصدير' }); return; }
+    
+    const thead = document.getElementById("report-table-head");
+    const headers = [];
+    if (thead) {
+        thead.querySelectorAll("th").forEach(th => headers.push(th.textContent.trim()));
+    }
+    
+    const data = [];
+    rows.forEach(tr => {
+        const cells = tr.querySelectorAll("td");
+        if (cells.length === 0) return;
+        const row = [];
+        cells.forEach(td => row.push(td.textContent.trim()));
+        data.push(row);
+    });
+    
+    const reportNames = {
+        profitLoss: "الارباح_والخسائر",
+        expenseBreakdown: "تحليل_المصروفات",
+        fuelSummary: "تقرير_البنزينة",
+        driverPerformance: "اداء_السائقين",
+        clientActivity: "نشاط_العملاء",
+        monthlyTrends: "الاتجاهات_الشهرية",
+        vehicleUtilization: "استغلال_العربيات"
+    };
+    
+    const filename = reportNames[type] || "تقرير";
+    exportToExcel(data, headers, filename);
 }
 
 function clearSession() {

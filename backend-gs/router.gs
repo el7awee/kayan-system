@@ -204,6 +204,29 @@ function routeRequest(e, method, userId, userRole) {
         resultPayload = accountingService_settleTrip(e, userId);
         break;
       
+      // 📊 التقارير
+      case 'getProfitLoss':
+        resultPayload = reportService_getProfitLoss(e.parameter);
+        break;
+      case 'getExpenseBreakdown':
+        resultPayload = reportService_getExpenseBreakdown(e.parameter);
+        break;
+      case 'getFuelSummary':
+        resultPayload = reportService_getFuelSummary(e.parameter);
+        break;
+      case 'getDriverPerformance':
+        resultPayload = reportService_getDriverPerformance(e.parameter);
+        break;
+      case 'getClientActivity':
+        resultPayload = reportService_getClientActivity(e.parameter);
+        break;
+      case 'getMonthlyTrends':
+        resultPayload = reportService_getMonthlyTrends(e.parameter);
+        break;
+      case 'getVehicleUtilization':
+        resultPayload = reportService_getVehicleUtilization(e.parameter);
+        break;
+        
       case 'logout':
         authService_logout(userId);
         resultPayload = { success: true, message: "تم تسجيل الخروج بنجاح." };
