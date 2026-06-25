@@ -42,7 +42,7 @@ const state = {
 
 // 🟢 تفعيل وضع Firebase (يستخدم Firestore بدل Apps Script للقراءة)
 const USE_FIREBASE = true;
-const USE_FIREBASE_AUTH = false; // Auth لسه من Apps Script
+const USE_FIREBASE_AUTH = true; // Auth من Firebase
 let autoRefreshTimer = null;
 
 // متغير للتحميل مرة واحدة
@@ -100,40 +100,69 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function initApp() {
-    const savedToken = localStorage.getItem("kyan_session_token");
-    const savedUser = localStorage.getItem("kyan_user_data");
-    const savedExpiry = localStorage.getItem("kyan_token_expiry");
-
-    if (savedToken && savedUser && savedExpiry) {
-        const expiry = new Date(savedExpiry);
-        if (expiry > new Date()) {
-            try {
-                const parsedUser = JSON.parse(savedUser);
-                state.user = {
-                    ...parsedUser,
-                    token: savedToken,
-                    tokenExpiry: savedExpiry
-                };
-                setupUserLayout();
-                switchView("view-dashboard");
-                refreshDashboard();
-                return;
-            } catch (e) {
-                clearSession();
+    if (USE_FIREBASE_AUTH && window.fbAuth) {
+        fbAuth.onAuthStateChanged(async fbUser => {
+            if (fbUser) {
+                try {
+                    const usersSnap = await fbDb.collection('users').where('auth_uid', '==', fbUser.uid).get();
+                    let userData;
+                    if (usersSnap.empty) {
+                        const emailSnap = await fbDb.collection('users').where('auth_email', '==', fbUser.email).get();
+                        if (emailSnap.empty) throw new Error('User not found');
+                        userData = emailSnap.docs[0].data();
+                    } else {
+                        userData = usersSnap.docs[0].data();
+                    }
+                    const token = await fbUser.getIdToken();
+                    state.user = {
+                        id: userData.User_ID,
+                        name: userData.Full_Name,
+                        username: userData.Username,
+                        role: userData.Role,
+                        token,
+                        tokenExpiry: new Date(Date.now() + 3600000).toISOString()
+                    };
+                    localStorage.setItem("kyan_session_token", token);
+                    localStorage.setItem("kyan_user_data", JSON.stringify({
+                        id: userData.User_ID, name: userData.Full_Name,
+                        username: userData.Username, role: userData.Role
+                    }));
+                    localStorage.setItem("kyan_token_expiry", state.user.tokenExpiry);
+                    setupUserLayout();
+                    switchView("view-dashboard");
+                    refreshDashboard();
+                    return;
+                } catch (e) {
+                    clearSession();
+                }
             }
-        } else {
-            clearSession();
-            Swal.fire({
-                icon: 'warning',
-                title: 'انتهت صلاحية الجلسة',
-                text: 'برجاء تسجيل الدخول مجدداً.',
-                timer: 2000,
-                showConfirmButton: false
-            });
+            initAllTableSearch();
+            switchView("view-login");
+        });
+    } else {
+        const savedToken = localStorage.getItem("kyan_session_token");
+        const savedUser = localStorage.getItem("kyan_user_data");
+        const savedExpiry = localStorage.getItem("kyan_token_expiry");
+
+        if (savedToken && savedUser && savedExpiry) {
+            const expiry = new Date(savedExpiry);
+            if (expiry > new Date()) {
+                try {
+                    const parsedUser = JSON.parse(savedUser);
+                    state.user = { ...parsedUser, token: savedToken, tokenExpiry: savedExpiry };
+                    setupUserLayout();
+                    switchView("view-dashboard");
+                    refreshDashboard();
+                    return;
+                } catch (e) { clearSession(); }
+            } else {
+                clearSession();
+                Swal.fire({ icon: 'warning', title: 'انتهت صلاحية الجلسة', text: 'برجاء تسجيل الدخول مجدداً.', timer: 2000, showConfirmButton: false });
+            }
         }
+        initAllTableSearch();
+        switchView("view-login");
     }
-    initAllTableSearch();
-    switchView("view-login");
 }
 
 // ─── تحديث تلقائي كل 30 ثانية ───
@@ -430,37 +459,88 @@ async function handleLoginSubmit(e) {
         clearSession();
         state.user = { id: null, name: null, username: null, role: null, token: null, tokenExpiry: null };
 
-        const response = await callBackend("login", { Username: username, Password: password });
+        if (USE_FIREBASE_AUTH && window.fbAuth) {
+            const email = username.includes('@') ? username : `${username}@kayan.system`;
+            const cred = await fbAuth.signInWithEmailAndPassword(email, password);
+            const fbUser = cred.user;
+            const token = await fbUser.getIdToken();
+            const tokenExpiry = new Date(Date.now() + 3600000).toISOString();
 
-        if (response.success) {
-            localStorage.setItem("kyan_session_token", response.session_token);
+            const usersSnap = await fbDb.collection('users').where('auth_uid', '==', fbUser.uid).get();
+            let userData;
+            if (usersSnap.empty) {
+                const emailSnap = await fbDb.collection('users').where('auth_email', '==', email).get();
+                if (emailSnap.empty) throw new Error('لم يتم العثور على بيانات المستخدم');
+                userData = emailSnap.docs[0].data();
+            } else {
+                userData = usersSnap.docs[0].data();
+            }
+
+            localStorage.setItem("kyan_session_token", token);
             localStorage.setItem("kyan_user_data", JSON.stringify({
-                id: response.user_id,
-                name: response.full_name,
-                username: response.username,
-                role: response.role
+                id: userData.User_ID,
+                name: userData.Full_Name,
+                username: userData.Username,
+                role: userData.Role
             }));
-            localStorage.setItem("kyan_token_expiry", response.token_expiry);
+            localStorage.setItem("kyan_token_expiry", tokenExpiry);
 
             state.user = {
-                id: response.user_id,
-                name: response.full_name,
-                username: response.username,
-                role: response.role,
-                token: response.session_token,
-                tokenExpiry: response.token_expiry
+                id: userData.User_ID,
+                name: userData.Full_Name,
+                username: userData.Username,
+                role: userData.Role,
+                token,
+                tokenExpiry
             };
 
             setupUserLayout();
             switchView("view-dashboard");
             refreshDashboard();
-
-            Swal.fire({ icon: 'success', title: 'تم تسجيل الدخول', text: `مرحباً ${response.full_name}`, timer: 2000, showConfirmButton: false });
+            Swal.fire({ icon: 'success', title: 'تم تسجيل الدخول', text: `مرحباً ${userData.Full_Name}`, timer: 2000, showConfirmButton: false });
         } else {
-            Swal.fire({ icon: 'error', title: 'فشل الدخول', text: response.message });
+            const response = await callBackend("login", { Username: username, Password: password });
+
+            if (response.success) {
+                localStorage.setItem("kyan_session_token", response.session_token);
+                localStorage.setItem("kyan_user_data", JSON.stringify({
+                    id: response.user_id,
+                    name: response.full_name,
+                    username: response.username,
+                    role: response.role
+                }));
+                localStorage.setItem("kyan_token_expiry", response.token_expiry);
+
+                state.user = {
+                    id: response.user_id,
+                    name: response.full_name,
+                    username: response.username,
+                    role: response.role,
+                    token: response.session_token,
+                    tokenExpiry: response.token_expiry
+                };
+
+                setupUserLayout();
+                switchView("view-dashboard");
+                refreshDashboard();
+
+                Swal.fire({ icon: 'success', title: 'تم تسجيل الدخول', text: `مرحباً ${response.full_name}`, timer: 2000, showConfirmButton: false });
+            } else {
+                Swal.fire({ icon: 'error', title: 'فشل الدخول', text: response.message });
+            }
         }
     } catch (err) {
-        handleStandardError(err);
+        if (USE_FIREBASE_AUTH && err.code) {
+            const messages = {
+                'auth/user-not-found': 'المستخدم غير موجود',
+                'auth/wrong-password': 'كلمة المرور خطأ',
+                'auth/invalid-email': 'البريد الإلكتروني غير صحيح',
+                'auth/too-many-requests': 'تم حظر الحساب مؤقتاً، حاول لاحقاً'
+            };
+            Swal.fire({ icon: 'error', title: 'فشل الدخول', text: messages[err.code] || err.message });
+        } else {
+            handleStandardError(err);
+        }
     } finally {
         setButtonLoading(submitBtn, false, '<i class="fa-solid fa-right-to-bracket ml-2"></i> تسجيل الدخول آمن');
     }
@@ -3136,7 +3216,9 @@ function updateThemeIcon(theme) {
 // ─── 8️⃣ تسجيل الخروج ───
 async function handleLogout() {
     try {
-        if (state.user.token) {
+        if (USE_FIREBASE_AUTH && window.fbAuth) {
+            await fbAuth.signOut();
+        } else if (state.user.token) {
             await callBackend("logout", {});
         }
     } catch (e) {
