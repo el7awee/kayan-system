@@ -219,13 +219,6 @@ function expenseService_getExpenses(ss, params) {
   
   return { "success": true, "data": page, "total": total };
 }
-  
-  // Pagination
-  let total = results.length;
-  let page = results.slice(offset, offset + limit);
-  
-  return { "success": true, "data": page, "total": total };
-}
 
 /**
  * 6. دالة تعديل مصروف
