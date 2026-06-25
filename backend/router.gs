@@ -46,7 +46,18 @@ function routeRequest(e, method, userId, userRole) {
   let realUserId = authResult.user_id;
   let realUserRole = authResult.role;
   
-  if (!authService_checkPermission(realUserRole, action)) {
+  // 🔐 استثناء: getPermissions/savePermissions تتحقق من ROLE_PERMISSIONS مباشرة
+  if (action === 'getPermissions' || action === 'savePermissions') {
+    const hardcoded = ROLE_PERMISSIONS[realUserRole];
+    if (!hardcoded || hardcoded.indexOf(action) === -1) {
+      return createJsonResponse({
+        "success": false,
+        "error_code": "INSUFFICIENT_PERMISSIONS",
+        "message": `عذراً، دورك التشغيلي (${realUserRole}) لا يمتلك الصلاحية لتنفيذ الإجراء: ${action}`,
+        "timestamp": new Date().toISOString()
+      }, 403);
+    }
+  } else if (!authService_checkPermission(realUserRole, action)) {
     return createJsonResponse({
       "success": false,
       "error_code": "INSUFFICIENT_PERMISSIONS",
