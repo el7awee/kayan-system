@@ -5,7 +5,7 @@
  */
 
 // ─── 1️⃣ الإعدادات والثوابت العالمية ───
-const BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbxhouw4rjCj__sj-lyvSEn1AZVPR00QOACayTZRhc1KQMB35OdO9Evk_5wNkLsPynV4/exec";
+const BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbxp3uqQVN6S4sMfylokQR08bgaAnbvmaVPOTCgtZ1O3dn3fdocdVoqVUUhIbdzJRkMl/exec";
 
 // حالة التطبيق المحلية
 const state = {
@@ -182,6 +182,16 @@ function bindUIEvents() {
     document.getElementById("btn-expenses-prev")?.addEventListener("click", () => { if (expensesState.page > 1) { expensesState.page--; renderExpensesTable(); } });
     document.getElementById("btn-expenses-next")?.addEventListener("click", () => { expensesState.page++; renderExpensesTable(); });
     document.getElementById("btn-export-expenses")?.addEventListener("click", exportExpensesToExcel);
+    
+    // كروت لوحة التحكم (توجيه)
+    document.getElementById("card-active-trips")?.addEventListener("click", () => switchView("view-trips"));
+    document.getElementById("card-pending")?.addEventListener("click", () => switchView("view-trips"));
+    document.getElementById("card-fuel")?.addEventListener("click", () => switchView("view-fuel"));
+    document.getElementById("card-notifications")?.addEventListener("click", () => switchView("view-notifications"));
+    document.getElementById("card-balance")?.addEventListener("click", () => switchView("view-balance"));
+    document.getElementById("card-expenses")?.addEventListener("click", () => switchView("view-expenses"));
+    document.getElementById("card-vehicles")?.addEventListener("click", () => switchView("view-vehicles"));
+    document.getElementById("card-drivers")?.addEventListener("click", () => switchView("view-drivers"));
 
     // 📊 التقارير
     document.getElementById("btn-generate-report")?.addEventListener("click", generateReport);
@@ -467,19 +477,18 @@ async function handleLoginSubmit(e) {
 // ─── 5️⃣-ب: لوحة التحكم ───
 async function refreshDashboard() {
     try {
-        // طلب واحد مجمّع بدل 5 طلبات منفصلة (تحسين السرعة)
+        document.getElementById("dash-last-update").textContent = new Date().toLocaleString("ar-EG");
+
         const dash = await callBackend("getDashboard", { Limit: 20 });
         const d = dash?.data || {};
         const tripsRes = { data: d.trips };
         const fuelRes = { data: d.fuel };
         const balanceRes = { data: d.my_balance };
-        const notifRes = { data: d.notifications };
         const expensesRes = { data: d.monthly_expenses };
 
         if (tripsRes?.data) {
             const trips = tripsRes.data;
             document.getElementById("stat-active-trips").innerText = trips.filter(t => t[7] === "OPEN").length;
-            document.getElementById("stat-pending-settlements").innerText = trips.filter(t => t[7] === "OPEN").length;
             state.cache.trips = trips;
             state.activeTrips = trips;
         }
@@ -497,28 +506,27 @@ async function refreshDashboard() {
             state.myBalance = myBalance;
         }
 
-        if (notifRes?.data) {
-            const unreadCount = notifRes.data.unread_count || 0;
-            document.getElementById("stat-notifications").innerText = unreadCount;
-            state.cache.notifications = notifRes.data.notifications || [];
-            
-            const notifications = notifRes.data.notifications || [];
-            const unread = notifications.filter(n => !n.is_read);
-            const bar = document.getElementById("notification-bar");
-            if (unread.length > 0) {
-                bar.classList.remove("hidden");
-                document.getElementById("notification-bar-message").innerText = unread[0].title + ": " + unread[0].message;
-            } else {
-                bar.classList.add("hidden");
-            }
-        }
-
         if (expensesRes?.data) {
             const monthlyTotal = expensesRes.data.total || 0;
             document.getElementById("stat-total-expenses").innerText = monthlyTotal.toFixed(2) + " ج.م";
         }
 
-        await loadFuelTransactions();
+        // تحديث إحصائيات العربيات والسائقين
+        if (state.cache.vehicles) {
+            const total = state.cache.vehicles.length;
+            const inTrip = state.cache.vehicles.filter(v => v.status === "IN_TRIP" || v.in_trip === true).length;
+            document.getElementById("stat-vehicles").innerHTML = `<span class="text-emerald-400">${total - inTrip}</span> / <span class="text-rose-400">${inTrip}</span>`;
+        }
+        if (state.cache.drivers) {
+            const total = state.cache.drivers.length;
+            const inTrip = state.cache.drivers.filter(d => d.status === "IN_TRIP" || d.in_trip === true).length;
+            document.getElementById("stat-drivers").innerHTML = `<span class="text-emerald-400">${total - inTrip}</span> / <span class="text-rose-400">${inTrip}</span>`;
+        }
+
+        // التشارتات + تحليل الجاز
+        renderExpenseChart();
+        renderFuelChart();
+        loadFuelAnalytics();
 
     } catch (err) {
         console.error("فشل تحديث لوحة التحكم:", err);
@@ -1181,6 +1189,139 @@ function exportExpensesToExcel() {
     link.download = `مصاريف_الشركة_${new Date().toISOString().slice(0,10)}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
+}
+
+let expenseChartInstance = null;
+let fuelChartInstance = null;
+
+async function renderExpenseChart() {
+    const canvas = document.getElementById("chart-expenses");
+    if (!canvas) return;
+
+    try {
+        const response = await callBackend("getExpenseBreakdown");
+        const data = response?.data;
+        if (!data || !data.breakdown) {
+            canvas.parentElement.innerHTML = '<p class="text-xs text-muted text-center py-8">لا توجد بيانات كافية</p>';
+            return;
+        }
+
+        if (expenseChartInstance) expenseChartInstance.destroy();
+
+        const labels = Object.keys(data.breakdown);
+        const values = labels.map(k => data.breakdown[k]);
+
+        expenseChartInstance = new Chart(canvas, {
+            type: "bar",
+            data: {
+                labels,
+                datasets: [{
+                    label: "المبلغ (ج.م)",
+                    data: values,
+                    backgroundColor: ["#f97316", "#e11d48", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#14b8a6", "#ec4899"],
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#94a3b8" } },
+                    x: { grid: { display: false }, ticks: { color: "#94a3b8" } }
+                }
+            }
+        });
+    } catch (err) {
+        console.error("Expense chart error:", err);
+    }
+}
+
+async function renderFuelChart() {
+    const canvas = document.getElementById("chart-fuel");
+    if (!canvas) return;
+
+    try {
+        const response = await callBackend("getFuelAnalytics");
+        const data = response?.data;
+        if (!data || data.length === 0) {
+            canvas.parentElement.innerHTML = '<p class="text-xs text-muted text-center py-8">لا توجد بيانات كافية</p>';
+            return;
+        }
+
+        if (fuelChartInstance) fuelChartInstance.destroy();
+
+        const items = data.slice(0, 10);
+        const labels = items.map(i => i.vehicle_plate || i.vehicle_id || "N/A");
+        const values = items.map(i => parseFloat(i.total_liters) || 0);
+
+        fuelChartInstance = new Chart(canvas, {
+            type: "bar",
+            data: {
+                labels,
+                datasets: [{
+                    label: "لترات",
+                    data: values,
+                    backgroundColor: "#10b981",
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#94a3b8" } },
+                    x: { grid: { display: false }, ticks: { color: "#94a3b8" } }
+                }
+            }
+        });
+    } catch (err) {
+        console.error("Fuel chart error:", err);
+    }
+}
+
+async function loadFuelAnalytics() {
+    const tbody = document.querySelector("#fuel-analytics-table tbody");
+    if (!tbody) return;
+
+    try {
+        const response = await callBackend("getFuelAnalytics");
+        const data = response?.data;
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted">لا توجد بيانات</td></tr>';
+            document.getElementById("fuel-analytics-total").textContent = "0";
+            return;
+        }
+
+        let grandTotal = 0;
+        const fragment = document.createDocumentFragment();
+
+        data.forEach(item => {
+            const liters = parseFloat(item.total_liters) || 0;
+            const cost = parseFloat(item.total_cost) || 0;
+            const trips = parseInt(item.trip_count) || 0;
+            grandTotal += liters;
+
+            const row = document.createElement("tr");
+            row.className = "border-b border-border hover:bg-hover/50 transition";
+            row.innerHTML = `
+                <td class="py-2 px-2">${item.vehicle_plate || item.vehicle_id || "N/A"}</td>
+                <td class="py-2 px-2 font-mono">${liters.toFixed(1)}</td>
+                <td class="py-2 px-2 font-mono">${cost.toFixed(2)}</td>
+                <td class="py-2 px-2">${trips}</td>
+            `;
+            fragment.appendChild(row);
+        });
+
+        document.getElementById("fuel-analytics-total").textContent = grandTotal.toFixed(1);
+        tbody.innerHTML = "";
+        tbody.appendChild(fragment);
+
+    } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-rose-500">فشل التحميل</td></tr>';
+        console.error("Fuel analytics error:", err);
+    }
 }
 
 // ─── 5️⃣-ز: البنزينة ───
