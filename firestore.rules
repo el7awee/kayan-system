@@ -93,7 +93,7 @@ service cloud.firestore {
 
     // ====== Notifications ======
     match /notifications/{notifId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated();
       allow write: if isAuthenticated();
     }
 
