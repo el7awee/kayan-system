@@ -5,7 +5,7 @@
  */
 
 // ─── 1️⃣ الإعدادات والثوابت العالمية ───
-const BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbxp3uqQVN6S4sMfylokQR08bgaAnbvmaVPOTCgtZ1O3dn3fdocdVoqVUUhIbdzJRkMl/exec";
+const BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbxA1YXpXhAyMAzokYuANiC3SuV51APPtneHIvxibIM7kcHpfwJFhpMjY0eCVxseBlX5/exec";
 
 // حالة التطبيق المحلية
 const state = {
@@ -137,6 +137,8 @@ function bindUIEvents() {
     document.getElementById("btn-refresh-drivers")?.addEventListener("click", () => loadDriversData(true));
     document.getElementById("btn-refresh-clients")?.addEventListener("click", () => loadClientsData(true));
     document.getElementById("btn-refresh-users")?.addEventListener("click", () => loadUsersData(true));
+    document.getElementById("btn-load-permissions")?.addEventListener("click", loadPermissionsMatrix);
+    document.getElementById("btn-save-permissions")?.addEventListener("click", savePermissionsMatrix);
     document.getElementById("btn-refresh-notifications")?.addEventListener("click", loadNotificationsData);
     document.getElementById("btn-refresh-balance")?.addEventListener("click", () => loadBalanceData(true));
 
@@ -174,13 +176,14 @@ function bindUIEvents() {
     document.getElementById("btn-add-expense")?.addEventListener("click", () => document.getElementById("form-add-expense")?.scrollIntoView({ behavior: "smooth" }));
     document.getElementById("btn-refresh-expenses")?.addEventListener("click", () => loadExpensesData(true));
     document.getElementById("form-add-expense")?.addEventListener("submit", handleAddExpenseSubmit);
+    document.getElementById("btn-expense-cancel-edit")?.addEventListener("click", cancelEditExpense);
     document.getElementById("expense-file-input")?.addEventListener("change", handleFileProcessing);
     document.getElementById("expense-search")?.addEventListener("input", () => { expensesState.page = 1; renderExpensesTable(); });
     document.getElementById("expense-filter-from")?.addEventListener("change", () => { expensesState.page = 1; renderExpensesTable(); });
     document.getElementById("expense-filter-to")?.addEventListener("change", () => { expensesState.page = 1; renderExpensesTable(); });
     document.getElementById("expense-filter-type")?.addEventListener("change", () => { expensesState.page = 1; renderExpensesTable(); });
     document.getElementById("btn-expenses-prev")?.addEventListener("click", () => { if (expensesState.page > 1) { expensesState.page--; renderExpensesTable(); } });
-    document.getElementById("btn-expenses-next")?.addEventListener("click", () => { expensesState.page++; renderExpensesTable(); });
+    document.getElementById("btn-expenses-next")?.addEventListener("click", () => { if (expensesState.page < Math.ceil(expensesState.filtered.length / expensesState.pageSize)) { expensesState.page++; renderExpensesTable(); } });
     document.getElementById("btn-export-expenses")?.addEventListener("click", exportExpensesToExcel);
     
     // كروت لوحة التحكم (توجيه)
@@ -381,7 +384,7 @@ async function callBackend(action, parameters = {}) {
         }
     }
 
-    const isWriteAction = ["createTrip", "updateTrip", "settleTripFinancials", "addExpense", "createUser", "toggleUserStatus", "updateUserRole", "deleteUser", "resetUserPassword", "createVehicle", "updateVehicle", "deleteVehicle", "createDriver", "updateDriverData", "deleteDriver", "createClient", "updateClient", "deleteClient", "addFuelBalance", "updateFuelPrice", "markNotificationRead", "markAllNotificationsRead", "deleteNotification", "addBalance", "transferBalance"].includes(action);
+    const isWriteAction = ["createTrip", "updateTrip", "settleTripFinancials", "addExpense", "createUser", "toggleUserStatus", "updateUserRole", "deleteUser", "resetUserPassword", "createVehicle", "updateVehicle", "deleteVehicle", "createDriver", "updateDriverData", "deleteDriver", "createClient", "updateClient", "deleteClient", "addFuelBalance", "updateFuelPrice", "markNotificationRead", "markAllNotificationsRead", "deleteNotification", "addBalance", "transferBalance", "savePermissions"].includes(action);
     if (isWriteAction) {
         body.append("Idempotency_Key", `IDMP-${Date.now()}-${Math.floor(Math.random() * 0xffffff).toString(16)}`);
         if (state.user.csrfToken) body.append("CSRF_Token", state.user.csrfToken);
@@ -511,15 +514,20 @@ async function refreshDashboard() {
             document.getElementById("stat-total-expenses").innerText = monthlyTotal.toFixed(2) + " ج.م";
         }
 
-        // تحديث إحصائيات العربيات والسائقين
+        // تحديث إحصائيات العربيات والسائقين من بيانات الرحلات
+        const trips = d.trips || [];
+        const activeTrips = trips.filter(t => t[7] === "OPEN");
+        const vehiclesInTrip = new Set(activeTrips.map(t => t[4]).filter(Boolean));
+        const driversInTrip = new Set(activeTrips.map(t => t[3]).filter(Boolean));
+
         if (state.cache.vehicles) {
             const total = state.cache.vehicles.length;
-            const inTrip = state.cache.vehicles.filter(v => v.status === "IN_TRIP" || v.in_trip === true).length;
+            const inTrip = vehiclesInTrip.size;
             document.getElementById("stat-vehicles").innerHTML = `<span class="text-emerald-400">${total - inTrip}</span> / <span class="text-rose-400">${inTrip}</span>`;
         }
         if (state.cache.drivers) {
             const total = state.cache.drivers.length;
-            const inTrip = state.cache.drivers.filter(d => d.status === "IN_TRIP" || d.in_trip === true).length;
+            const inTrip = driversInTrip.size;
             document.getElementById("stat-drivers").innerHTML = `<span class="text-emerald-400">${total - inTrip}</span> / <span class="text-rose-400">${inTrip}</span>`;
         }
 
@@ -922,6 +930,8 @@ async function handleCreateTripSubmit(e) {
 async function handleAddExpenseSubmit(e) {
     e.preventDefault();
     const submitBtn = document.getElementById("btn-expense-submit");
+    const editId = document.getElementById("expense-edit-id")?.value || "";
+    const isEdit = !!editId;
 
     setButtonLoading(submitBtn, true, "جاري الحفظ...");
 
@@ -940,14 +950,19 @@ async function handleAddExpenseSubmit(e) {
 
     if (!params.Expense_Category || parseFloat(params.Amount) <= 0) {
         Swal.fire({ icon: 'warning', title: 'بيانات ناقصة', text: 'برجاء اختيار النوع وإدخال المبلغ.' });
-        setButtonLoading(submitBtn, false, '<i class="fa-solid fa-floppy-disk ml-1"></i> تسجيل المصروف');
+        setButtonLoading(submitBtn, false, '<i class="fa-solid fa-cloud-arrow-up ml-1"></i> تسجيل المصروف');
         return;
     }
 
     try {
-        await callBackend("addExpense", params);
-        Swal.fire({ icon: 'success', title: 'تم الحفظ', text: 'تم تسجيل المصروف.', timer: 2000, showConfirmButton: false });
-        document.getElementById("form-add-expense").reset();
+        if (isEdit) {
+            params.Expense_ID = editId;
+            await callBackend("updateExpense", params);
+        } else {
+            await callBackend("addExpense", params);
+        }
+        Swal.fire({ icon: 'success', title: isEdit ? 'تم التحديث' : 'تم الحفظ', text: isEdit ? 'تم تعديل المصروف.' : 'تم تسجيل المصروف.', timer: 2000, showConfirmButton: false });
+        cancelEditExpense();
         document.getElementById("expense-file-base64").value = "";
         document.getElementById("expense-file-name").value = "";
         loadExpensesData(true);
@@ -955,8 +970,26 @@ async function handleAddExpenseSubmit(e) {
     } catch (err) {
         handleStandardError(err);
     } finally {
-        setButtonLoading(submitBtn, false, '<i class="fa-solid fa-floppy-disk ml-1"></i> تسجيل المصروف');
+        setButtonLoading(submitBtn, false, '<i class="fa-solid fa-cloud-arrow-up ml-1"></i> تسجيل المصروف');
     }
+}
+
+function cancelEditExpense() {
+    document.getElementById("expense-edit-id").value = "";
+    document.getElementById("form-add-expense").reset();
+    document.getElementById("expense-file-base64").value = "";
+    document.getElementById("expense-file-name").value = "";
+    document.getElementById("btn-expense-cancel-edit").classList.add("hidden");
+    document.getElementById("btn-expense-submit").innerHTML = '<i class="fa-solid fa-cloud-arrow-up ml-1"></i> تسجيل المصروف';
+}
+
+function fillExpenseForm(expense) {
+    document.getElementById("expense-category").value = expense.category || "";
+    document.getElementById("expense-description").value = expense.description || "";
+    document.getElementById("expense-amount").value = expense.amount || "";
+    document.getElementById("expense-edit-id").value = expense.expense_id || "";
+    document.getElementById("btn-expense-cancel-edit").classList.remove("hidden");
+    document.getElementById("btn-expense-submit").innerHTML = '<i class="fa-solid fa-pen ml-1"></i> تحديث المصروف';
 }
 
 let expensesState = { data: [], filtered: [], page: 1, pageSize: 15 };
@@ -994,10 +1027,10 @@ function renderExpensesTable() {
     const start = (expensesState.page - 1) * expensesState.pageSize;
     const pageItems = filtered.slice(start, start + expensesState.pageSize);
 
-    document.getElementById("expenses-pagination-info").textContent = `${totalItems} مصروف`;
+    document.getElementById("exp-table-count").textContent = `${totalItems} مصروف`;
     document.getElementById("expenses-pagination-page").textContent = `صفحة ${expensesState.page} من ${totalPages}`;
-    document.getElementById("btn-expenses-prev").disabled = expensesState.page <= 1;
-    document.getElementById("btn-expenses-next").disabled = expensesState.page >= totalPages;
+    document.getElementById("btn-expenses-prev").classList.toggle("hidden", expensesState.page <= 1);
+    document.getElementById("btn-expenses-next").classList.toggle("hidden", expensesState.page >= totalPages);
 
     if (pageItems.length === 0) {
         tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-muted">لا توجد مصروفات</td></tr>`;
@@ -1085,51 +1118,8 @@ function updateExpensesSummary() {
 window.editExpense = async function(expenseId) {
     const ex = expensesState.data.find(e => e.expense_id === expenseId);
     if (!ex) return;
-
-    const { value: formValues } = await Swal.fire({
-        title: 'تعديل المصروف',
-        html: `
-            <div class="text-right">
-                <label class="block text-sm font-medium mb-1 mt-2">نوع المصروف</label>
-                <select id="edit-expense-category" class="swal2-input w-full">
-                    <option value="كهرباء" ${ex.category === 'كهرباء' ? 'selected' : ''}>🔌 كهرباء</option>
-                    <option value="مياه" ${ex.category === 'مياه' ? 'selected' : ''}>💧 مياه</option>
-                    <option value="غاز" ${ex.category === 'غاز' ? 'selected' : ''}>🔥 غاز</option>
-                    <option value="إيجار" ${ex.category === 'إيجار' ? 'selected' : ''}>🏠 إيجار</option>
-                    <option value="اتصالات" ${ex.category === 'اتصالات' ? 'selected' : ''}>📞 اتصالات</option>
-                    <option value="إنترنت" ${ex.category === 'إنترنت' ? 'selected' : ''}>🌐 إنترنت</option>
-                    <option value="صيانة" ${ex.category === 'صيانة' ? 'selected' : ''}>🔧 صيانة</option>
-                    <option value="رواتب" ${ex.category === 'رواتب' ? 'selected' : ''}>💰 رواتب</option>
-                    <option value="إيجار معدات" ${ex.category === 'إيجار معدات' ? 'selected' : ''}>🚜 إيجار معدات</option>
-                    <option value="أخرى" ${ex.category === 'أخرى' ? 'selected' : ''}>📦 أخرى</option>
-                </select>
-                <label class="block text-sm font-medium mb-1 mt-2">البيان</label>
-                <input id="edit-expense-description" class="swal2-input w-full" value="${esc(ex.description || '')}">
-                <label class="block text-sm font-medium mb-1 mt-2">القيمة (ج.م)</label>
-                <input id="edit-expense-amount" class="swal2-input w-full" type="number" value="${ex.amount || 0}">
-            </div>
-        `,
-        focusConfirm: false,
-        showCancelButton: true,
-        confirmButtonText: 'حفظ',
-        cancelButtonText: 'إلغاء',
-        preConfirm: () => ({
-            Expense_ID: expenseId,
-            Expense_Category: document.getElementById('edit-expense-category').value,
-            Description: document.getElementById('edit-expense-description').value,
-            Amount: parseFloat(document.getElementById('edit-expense-amount').value) || 0
-        })
-    });
-
-    if (formValues && formValues.Amount > 0) {
-        try {
-            await callBackend("updateExpense", formValues);
-            Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
-            loadExpensesData(true);
-        } catch (err) {
-            handleStandardError(err);
-        }
-    }
+    fillExpenseForm(ex);
+    document.getElementById("form-add-expense").scrollIntoView({ behavior: "smooth" });
 };
 
 window.deleteExpense = async function(expenseId) {
@@ -1202,7 +1192,7 @@ async function renderExpenseChart() {
         const response = await callBackend("getExpenseBreakdown");
         const data = response?.data;
         if (!data || !data.breakdown) {
-            canvas.parentElement.innerHTML = '<p class="text-xs text-muted text-center py-8">لا توجد بيانات كافية</p>';
+            if (expenseChartInstance) { expenseChartInstance.destroy(); expenseChartInstance = null; }
             return;
         }
 
@@ -1245,7 +1235,7 @@ async function renderFuelChart() {
         const response = await callBackend("getFuelAnalytics");
         const data = response?.data;
         if (!data || data.length === 0) {
-            canvas.parentElement.innerHTML = '<p class="text-xs text-muted text-center py-8">لا توجد بيانات كافية</p>';
+            if (fuelChartInstance) { fuelChartInstance.destroy(); fuelChartInstance = null; }
             return;
         }
 
@@ -2487,6 +2477,128 @@ window.deleteUser = async function(userId) {
         handleStandardError(err);
     }
 };
+
+// ─── 5️⃣-ن: الصلاحيات ───
+let permissionsData = null;
+
+async function loadPermissionsMatrix() {
+    const container = document.getElementById('permissions-matrix');
+    const saveBtn = document.getElementById('btn-save-permissions');
+    if (!container) return;
+
+    container.innerHTML = '<p class="text-sm text-muted p-4 text-center"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</p>';
+
+    try {
+        const res = await callBackend('getPermissions', {});
+        if (!res.success) {
+            container.innerHTML = `<p class="text-sm text-rose-500 p-4 text-center">فشل تحميل الصلاحيات: ${res.message}</p>`;
+            return;
+        }
+
+        permissionsData = res.data;
+        renderPermissionsMatrix(container, permissionsData);
+        saveBtn.classList.remove('hidden');
+    } catch (err) {
+        container.innerHTML = `<p class="text-sm text-rose-500 p-4 text-center">خطأ: ${err.message}</p>`;
+    }
+}
+
+function renderPermissionsMatrix(container, data) {
+    const roles = Object.keys(data.roles);
+    const allActions = data.allActions || [];
+
+    const categories = {
+        'الرحلات': ['getTrips', 'getDrivers', 'createTrip', 'updateTripStatus', 'updateTrip', 'settleTripFinancials', 'getTripExpenses'],
+        'المصروفات': ['addExpense', 'updateExpense', 'deleteExpense', 'getExpenses', 'getMonthlyExpenses'],
+        'المستخدمين': ['createUser', 'getUsers', 'toggleUserStatus', 'updateUserRole', 'deleteUser', 'resetUserPassword'],
+        'العربيات': ['getVehicles', 'createVehicle', 'updateVehicle', 'deleteVehicle'],
+        'السائقين': ['getDriversList', 'createDriver', 'updateDriverData', 'deleteDriver'],
+        'العملاء': ['getClients', 'createClient', 'updateClient', 'deleteClient'],
+        'البنزينة': ['getFuelBalance', 'addFuelBalance', 'getFuelTransactions', 'getFuelAnalytics', 'updateFuelPrice'],
+        'التنبيهات': ['getNotifications', 'markNotificationRead', 'markAllNotificationsRead', 'deleteNotification'],
+        'الصيانة': ['getMaintenance', 'getVehicleMaintenance', 'getTripMaintenance', 'updateMaintenance', 'deleteMaintenance'],
+        'العهدات': ['getMyBalance', 'getUserBalance', 'getMyTransactions', 'getAllTransactions', 'addBalance', 'deductBalance', 'transferBalance'],
+        'أخرى': ['getDashboard', 'getLookups', 'logout', 'viewAuditLog']
+    };
+
+    const roleLabels = { 'Admin': 'مدير نظام', 'Manager': 'مدير عام', 'Operations': 'عمليات', 'Accountant': 'محاسب' };
+    const actionLabels = {
+        'getTrips': 'عرض الرحلات', 'getDrivers': 'عرض السائقين', 'createTrip': 'إنشاء رحلة',
+        'updateTripStatus': 'تحديث حالة الرحلة', 'updateTrip': 'تعديل الرحلة',
+        'settleTripFinancials': 'تصفية الرحلة', 'getTripExpenses': 'مصروفات الرحلة',
+        'addExpense': 'إضافة مصروف', 'updateExpense': 'تعديل مصروف', 'deleteExpense': 'حذف مصروف',
+        'getExpenses': 'عرض المصروفات', 'getMonthlyExpenses': 'مصروفات الشهر',
+        'createUser': 'إنشاء مستخدم', 'getUsers': 'عرض المستخدمين', 'toggleUserStatus': 'تعطيل/تفعيل مستخدم',
+        'updateUserRole': 'تغيير دور', 'deleteUser': 'حذف مستخدم', 'resetUserPassword': 'إعادة كلمة السر',
+        'getVehicles': 'عرض العربيات', 'createVehicle': 'إضافة عربية', 'updateVehicle': 'تعديل عربية', 'deleteVehicle': 'حذف عربية',
+        'getDriversList': 'عرض السائقين', 'createDriver': 'إضافة سائق', 'updateDriverData': 'تعديل سائق', 'deleteDriver': 'حذف سائق',
+        'getClients': 'عرض العملاء', 'createClient': 'إضافة عميل', 'updateClient': 'تعديل عميل', 'deleteClient': 'حذف عميل',
+        'getFuelBalance': 'رصيد البنزينة', 'addFuelBalance': 'إضافة رصيد بنزينة',
+        'getFuelTransactions': 'حركة البنزينة', 'getFuelAnalytics': 'تحليل البنزينة', 'updateFuelPrice': 'تحديث سعر السولار',
+        'getNotifications': 'عرض التنبيهات', 'markNotificationRead': 'تحديد مقروء', 'markAllNotificationsRead': 'تحديد الكل مقروء',
+        'deleteNotification': 'حذف تنبيه',
+        'getMaintenance': 'عرض الصيانة', 'getVehicleMaintenance': 'صيانة عربية', 'getTripMaintenance': 'صيانة رحلة',
+        'updateMaintenance': 'تحديث صيانة', 'deleteMaintenance': 'حذف صيانة',
+        'getMyBalance': 'رصيدي', 'getUserBalance': 'رصيد مستخدم', 'getMyTransactions': 'حركتي',
+        'getAllTransactions': 'كل الحركة', 'addBalance': 'إضافة عهدة', 'deductBalance': 'خصم عهدة', 'transferBalance': 'تحويل عهدة',
+        'getDashboard': 'لوحة التحكم', 'getLookups': 'قوائم', 'logout': 'تسجيل خروج', 'viewAuditLog': 'سجل التدقيق'
+    };
+
+    let html = '<table class="w-full text-right border-collapse text-xs"><thead><tr><th class="p-2 text-muted border-b border-border">الإجراء</th>';
+    roles.forEach(role => {
+        html += `<th class="p-2 text-center border-b border-border">${roleLabels[role] || role}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+
+    Object.entries(categories).forEach(([category, actions]) => {
+        html += `<tr class="bg-secondary/40"><td colspan="${roles.length + 1}" class="p-2 text-xs font-bold text-muted">${category}</td></tr>`;
+        actions.forEach(action => {
+            html += `<tr class="hover:bg-hover/50 transition"><td class="p-1.5 pr-3 text-muted">${actionLabels[action] || action}</td>`;
+            roles.forEach(role => {
+                const checked = (data.roles[role] || []).includes(action);
+                html += `<td class="p-1.5 text-center"><input type="checkbox" data-role="${role}" data-action="${action}" ${checked ? 'checked' : ''} class="w-4 h-4 accent-amber-500 cursor-pointer"></td>`;
+            });
+            html += '</tr>';
+        });
+    });
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+async function savePermissionsMatrix() {
+    if (!permissionsData) return;
+
+    const container = document.getElementById('permissions-matrix');
+    const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+
+    const newRoles = {};
+    checkboxes.forEach(cb => {
+        const role = cb.dataset.role;
+        const action = cb.dataset.action;
+        if (!newRoles[role]) newRoles[role] = [];
+        if (cb.checked) newRoles[role].push(action);
+    });
+
+    Object.keys(permissionsData.roles).forEach(role => {
+        if (!newRoles[role]) newRoles[role] = [];
+    });
+
+    try {
+        const res = await callBackend('savePermissions', {
+            bodyPayload: JSON.stringify(newRoles)
+        });
+
+        if (res.success) {
+            Swal.fire({ icon: 'success', title: 'تم حفظ الصلاحيات', timer: 1500, showConfirmButton: false });
+            permissionsData.roles = newRoles;
+        } else {
+            Swal.fire({ icon: 'error', title: 'فشل الحفظ', text: res.message });
+        }
+    } catch (err) {
+        Swal.fire({ icon: 'error', title: 'خطأ', text: err.message });
+    }
+}
 
 // ─── 6️⃣ الدوال المساعدة ───
 function lookupDriverName(driverId) {
