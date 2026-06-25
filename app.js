@@ -45,6 +45,13 @@ const USE_FIREBASE = true;
 const USE_FIREBASE_AUTH = true; // Auth من Firebase
 let autoRefreshTimer = null;
 
+// 🛡️ دالة تعقيم النصوص ضد XSS
+function esc(str) {
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(str ?? ''));
+    return div.innerHTML;
+}
+
 // متغير للتحميل مرة واحدة
 let dropdownsLoaded = false;
 
@@ -165,15 +172,15 @@ function initApp() {
     }
 }
 
-// ─── تحديث تلقائي كل 30 ثانية ───
+// ─── تحديث تلقائي كل 120 ثانية ───
 function startAutoRefresh() {
     stopAutoRefresh();
-        autoRefreshTimer = setInterval(() => {
-            const curView = document.querySelector(".view-section:not(.hidden)");
-            if (curView && curView.id === "view-dashboard") {
-                refreshDashboard(false);
-            }
-        }, 30000);
+    autoRefreshTimer = setInterval(() => {
+        const curView = document.querySelector(".view-section:not(.hidden)");
+        if (curView && (curView.id === "view-dashboard" || curView.id === "view-trips" || curView.id === "view-expenses")) {
+            refreshDashboard(false);
+        }
+    }, 120000);
 }
 function stopAutoRefresh() {
     if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
@@ -467,15 +474,27 @@ async function handleLoginSubmit(e) {
             const token = await fbUser.getIdToken();
             const tokenExpiry = new Date(Date.now() + 3600000).toISOString();
 
-            const usersSnap = await fbDb.collection('users').where('auth_uid', '==', fbUser.uid).get();
-            let userData;
-            if (usersSnap.empty) {
-                const emailSnap = await fbDb.collection('users').where('auth_email', '==', email).get();
-                if (emailSnap.empty) throw new Error('لم يتم العثور على بيانات المستخدم');
-                userData = emailSnap.docs[0].data();
-            } else {
-                userData = usersSnap.docs[0].data();
+            // Query واحد: use auth_uid first, fallback to auth_email (بدون انتظار sequential)
+            let userData = null;
+            try {
+                // Try auth_uid first (الأسرع)
+                const usersSnap = await fbDb.collection('users').where('auth_uid', '==', fbUser.uid).get();
+                if (!usersSnap.empty) userData = usersSnap.docs[0].data();
+            } catch (_) {}
+            if (!userData) {
+                try {
+                    const emailSnap = await fbDb.collection('users').where('auth_email', '==', email).get();
+                    if (!emailSnap.empty) userData = emailSnap.docs[0].data();
+                } catch (_) {}
             }
+            if (!userData) {
+                // Fallback لـ Apps Script
+                const res = await callBackend("login", { Username: username, Password: password });
+                if (res.success) {
+                    userData = { User_ID: res.user_id, Full_Name: res.full_name, Username: res.username, Role: res.role };
+                }
+            }
+            if (!userData) throw new Error('لم يتم العثور على بيانات المستخدم');
 
             localStorage.setItem("kyan_session_token", token);
             localStorage.setItem("kyan_user_data", JSON.stringify({
@@ -497,8 +516,8 @@ async function handleLoginSubmit(e) {
 
             setupUserLayout();
             switchView("view-dashboard");
-            refreshDashboard();
-            Swal.fire({ icon: 'success', title: 'تم تسجيل الدخول', text: `مرحباً ${userData.Full_Name}`, timer: 2000, showConfirmButton: false });
+            Swal.fire({ icon: 'success', title: 'تم تسجيل الدخول', text: `مرحباً ${userData.Full_Name}`, timer: 1500, showConfirmButton: false });
+            setTimeout(() => refreshDashboard(), 100);
         } else {
             const response = await callBackend("login", { Username: username, Password: password });
 
@@ -523,9 +542,8 @@ async function handleLoginSubmit(e) {
 
                 setupUserLayout();
                 switchView("view-dashboard");
-                refreshDashboard();
-
-                Swal.fire({ icon: 'success', title: 'تم تسجيل الدخول', text: `مرحباً ${response.full_name}`, timer: 2000, showConfirmButton: false });
+                Swal.fire({ icon: 'success', title: 'تم تسجيل الدخول', text: `مرحباً ${response.full_name}`, timer: 1500, showConfirmButton: false });
+                setTimeout(() => refreshDashboard(), 100);
             } else {
                 Swal.fire({ icon: 'error', title: 'فشل الدخول', text: response.message });
             }
@@ -572,20 +590,18 @@ async function refreshDashboard(forceRefresh = false) {
             }
         }
 
-        // 🔵 دايمًا شغّل Apps Script كـ fallback
-        const asDash = await callBackend("getDashboard", { Limit: 20, _force: forceRefresh }).catch(() => ({}));
-        const asD = asDash?.data || {};
-
-        // Normalize: if using Apps Script, map field names
-        let d;
+        let d, asD = {};
         if (fbData?.dash?.trips?.length) {
             d = fbData.dash;
         } else {
+            const asDash = await callBackend("getDashboard", { Limit: 20, _force: forceRefresh }).catch(() => ({}));
+            asD = asDash?.data || {};
             d = Object.assign({}, asD);
             d.active_trips = (asD.trips || []).filter(t => t.trip_status === 'OPEN' || t[7] === 'OPEN').length;
             d.current_fuel_balance = asD.fuel?.current_balance || 0;
             d.total_expenses = asD.monthly_expenses?.total || 0;
         }
+        const dashData = asD; // backup for notifications/balance fallback
 
         // Vehicles: Firebase data أو fetch منفصل من Apps Script
         let vehicles = fbData?.vehRes?.data || [];
@@ -608,17 +624,27 @@ async function refreshDashboard(forceRefresh = false) {
         const openTrips = trips.filter(t => t.trip_status === 'OPEN' || t[7] === 'OPEN');
         const busyVehIds = new Set(openTrips.map(t => t.vehicle_number || t[4]).filter(Boolean));
         const totalVeh = vehicles.length;
-        document.getElementById("stat-vehicles").innerHTML = `<span class="text-emerald-400">${totalVeh - busyVehIds.size}</span> / <span class="text-rose-400">${busyVehIds.size}</span>`;
+        const elVeh = document.getElementById("stat-vehicles");
+        if (elVeh) { elVeh.innerHTML = ''; elVeh.append(
+            Object.assign(document.createElement('span'), { className: 'text-emerald-400', textContent: totalVeh - busyVehIds.size }),
+            document.createTextNode(' / '),
+            Object.assign(document.createElement('span'), { className: 'text-rose-400', textContent: busyVehIds.size })
+        ); }
         if (vehicles.length) state.cache.vehicles = vehicles;
 
         // السواقين
         const busyDrvIds = new Set(openTrips.map(t => t.driver_code || t[3]).filter(Boolean));
-        document.getElementById("stat-drivers").innerHTML = `<span class="text-emerald-400">${drivers.length - busyDrvIds.size}</span> / <span class="text-rose-400">${busyDrvIds.size}</span>`;
+        const elDrv = document.getElementById("stat-drivers");
+        if (elDrv) { elDrv.innerHTML = ''; elDrv.append(
+            Object.assign(document.createElement('span'), { className: 'text-emerald-400', textContent: drivers.length - busyDrvIds.size }),
+            document.createTextNode(' / '),
+            Object.assign(document.createElement('span'), { className: 'text-rose-400', textContent: busyDrvIds.size })
+        ); }
         if (drivers.length) state.cache.drivers = drivers;
         if (trips.length) { state.cache.trips = trips; state.activeTrips = trips; }
 
         // الإشعارات
-        const notifs = asD.notifications || fbData?.dash?.notifications || {};
+        const notifs = dashData.notifications || fbData?.dash?.notifications || {};
         const unreadCount = notifs.unread_count || 0;
         state.cache.notifications = notifs.notifications || [];
         const bellBadge = document.getElementById("bell-badge");
@@ -632,11 +658,11 @@ async function refreshDashboard(forceRefresh = false) {
         }
 
         // رصيدي
-        const myBal = asD.my_balance?.current_balance || 0;
+        const myBal = dashData.my_balance?.current_balance || 0;
         if (myBal) { animateCounter(document.getElementById("stat-my-balance"), myBal, ' ج.م'); state.myBalance = myBal; }
 
         // Charts
-        const monthlyExp = d.monthly_expenses || asD.monthly_expenses;
+        const monthlyExp = d.monthly_expenses;
         if (monthlyExp) window._lastExpensesData = monthlyExp;
 
         let fuelTxns;
@@ -686,10 +712,10 @@ async function loadFuelAnalytics() {
                 }
                 tbody.innerHTML = data.vehicles.map(v => `
                     <tr class="border-b border-border hover:bg-secondary/30 transition">
-                        <td class="py-2 px-2 font-medium">${v.vehicle_id}</td>
-                        <td class="py-2 px-2 font-mono">${v.total_liters}</td>
-                        <td class="py-2 px-2 font-mono">${v.total_cost.toLocaleString()}</td>
-                        <td class="py-2 px-2">${v.trip_count}</td>
+                        <td class="py-2 px-2 font-medium">${esc(v.vehicle_id)}</td>
+                        <td class="py-2 px-2 font-mono">${esc(v.total_liters)}</td>
+                        <td class="py-2 px-2 font-mono">${esc((v.total_cost || 0).toLocaleString())}</td>
+                        <td class="py-2 px-2">${esc(v.trip_count)}</td>
                     </tr>
                 `).join('');
                 return;
@@ -723,7 +749,7 @@ async function loadFuelAnalytics() {
             }
             tbody.innerHTML = entries.map(([vId, v]) => `
                 <tr class="border-b border-border hover:bg-secondary/30 transition">
-                    <td class="py-2 px-2 font-medium">${vId}</td>
+                    <td class="py-2 px-2 font-medium">${esc(vId)}</td>
                     <td class="py-2 px-2 font-mono">${v.liters.toFixed(1)}</td>
                     <td class="py-2 px-2 font-mono">${v.cost.toLocaleString()}</td>
                     <td class="py-2 px-2">${v.trips.size}</td>
@@ -953,9 +979,9 @@ function renderTripsTable(trips) {
         const row = document.createElement("tr");
         row.className = "table-row hover:bg-hover transition";
         row.innerHTML = `
-            <td class="p-4 font-mono text-xs text-muted">${tripId}</td>
-            <td class="p-4 font-medium">${lookupDriverName(trip[3])}</td>
-            <td class="p-4 text-xs">${lookupVehicleLabel(trip[4])}</td>
+            <td class="p-4 font-mono text-xs text-muted">${esc(tripId)}</td>
+            <td class="p-4 font-medium">${esc(lookupDriverName(trip[3]))}</td>
+            <td class="p-4 text-xs">${esc(lookupVehicleLabel(trip[4]))}</td>
             <td class="p-4 font-mono text-xs text-amber-400">${parseFloat(trip[14] || 0).toFixed(1)} لتر</td>
             <td class="p-4"><span class="px-2.5 py-1 rounded-full text-xs font-semibold ${badgeClass}">${statusLabel}</span></td>
             <td class="p-4 text-center">${actionButtons}</td>
@@ -1067,11 +1093,11 @@ window.triggerSettlement = async function(tripId, currentVersion) {
     const catOptions = SETTLE_EXPENSE_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join("");
 
     const result = await Swal.fire({
-        title: `تصفية وإغلاق الرحلة ${tripId}`,
+        title: `تصفية وإغلاق الرحلة ${esc(tripId)}`,
         width: 600,
         html: `
             <div class="text-right" style="line-height:1.9;font-size:14px">
-                <div>السائق: <b>${driverName}</b></div>
+                <div>السائق: <b>${esc(driverName)}</b></div>
                 <div>العهدة الحالية مع السائق: <b id="settle-custody" style="color:#0ea5e9">${custody.toFixed(2)} ج.م</b></div>
                 <hr style="margin:10px 0">
                 <div style="font-weight:bold;margin-bottom:6px">مصاريف الرحلة (سجّلها قبل الإغلاق):</div>
@@ -1367,15 +1393,15 @@ function renderExpensesTable(expenses) {
         const hasReceipt = ex.receipt_file_id && ex.receipt_file_id !== "0" && ex.receipt_file_id !== "";
         return `
             <tr class="border-b border-border hover:bg-secondary/20 transition">
-                <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded-full text-[10px] ${getCategoryBadge(ex.category)}">${ex.category}</span></td>
-                <td class="py-2.5 px-3 text-muted max-w-[200px] truncate" title="${ex.description || ''}">${ex.description || '<span class="text-muted/50">—</span>'}</td>
+                <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded-full text-[10px] ${getCategoryBadge(ex.category)}">${esc(ex.category)}</span></td>
+                <td class="py-2.5 px-3 text-muted max-w-[200px] truncate" title="${esc(ex.description || '')}">${ex.description ? esc(ex.description) : '<span class="text-muted/50">—</span>'}</td>
                 <td class="py-2.5 px-3 font-mono font-bold">${(ex.amount || 0).toLocaleString()} ج.م</td>
-                <td class="py-2.5 px-3">${hasReceipt ? `<a href="https://drive.google.com/file/d/${ex.receipt_file_id}/view" target="_blank" class="text-sky-400 hover:text-sky-300" title="عرض الإيصال"><i class="fa-solid fa-image"></i></a>` : '<span class="text-muted/50">—</span>'}</td>
+                <td class="py-2.5 px-3">${hasReceipt ? `<a href="https://drive.google.com/file/d/${esc(ex.receipt_file_id)}/view" target="_blank" class="text-sky-400 hover:text-sky-300" title="عرض الإيصال"><i class="fa-solid fa-image"></i></a>` : '<span class="text-muted/50">—</span>'}</td>
                 <td class="py-2.5 px-3 text-muted text-[10px]">${formatDate(ex.created_at)}</td>
                 <td class="py-2.5 px-3 text-center">
                     ${showActions ? `
-                        <button class="text-amber-400 hover:text-amber-300 mx-1 edit-expense-btn" data-id="${ex.expense_id}" title="تعديل"><i class="fa-solid fa-pen-to-square"></i></button>
-                        <button class="text-rose-400 hover:text-rose-300 mx-1 delete-expense-btn" data-id="${ex.expense_id}" title="حذف"><i class="fa-solid fa-trash-can"></i></button>
+                        <button class="text-amber-400 hover:text-amber-300 mx-1 edit-expense-btn" data-id="${esc(ex.expense_id)}" title="تعديل"><i class="fa-solid fa-pen-to-square"></i></button>
+                        <button class="text-rose-400 hover:text-rose-300 mx-1 delete-expense-btn" data-id="${esc(ex.expense_id)}" title="حذف"><i class="fa-solid fa-trash-can"></i></button>
                     ` : ''}
                 </td>
             </tr>
@@ -1742,12 +1768,12 @@ function renderMaintenanceTable(data) {
         row.className = "table-row hover:bg-hover transition";
         row.innerHTML = `
             <td class="p-3 text-xs">${r.created_at ? new Date(r.created_at).toLocaleString('ar-EG') : '--'}</td>
-            <td class="p-3 text-xs font-medium">${r.vehicle_id || '--'}</td>
-            <td class="p-3 text-xs">${r.trip_id || '--'}</td>
-            <td class="p-3 text-xs"><span class="badge badge-open">${r.maintenance_type || '--'}</span></td>
+            <td class="p-3 text-xs font-medium">${esc(r.vehicle_id || '--')}</td>
+            <td class="p-3 text-xs">${esc(r.trip_id || '--')}</td>
+            <td class="p-3 text-xs"><span class="badge badge-open">${esc(r.maintenance_type || '--')}</span></td>
             <td class="p-3 text-xs text-rose-400 font-mono">${r.amount || 0} ج.م</td>
-            <td class="p-3 text-xs">${r.workshop || '--'}</td>
-            <td class="p-3 text-xs">${r.odometer || '--'}</td>
+            <td class="p-3 text-xs">${esc(r.workshop || '--')}</td>
+            <td class="p-3 text-xs">${esc(r.odometer || '--')}</td>
         `;
         fragment.appendChild(row);
     });
@@ -2015,14 +2041,14 @@ function renderVehiclesTable(vehicles) {
         row.className = "table-row hover:bg-hover transition";
         const isExpired = v.license_expiry && new Date(v.license_expiry) < new Date();
         row.innerHTML = `
-            <td class="p-4 text-xs font-mono">${v.vehicle_id}</td>
-            <td class="p-4 font-medium">${v.plate_number}</td>
-            <td class="p-4 text-xs">${v.model}</td>
-            <td class="p-4 text-xs">${v.type || '--'}</td>
-            <td class="p-4 text-xs ${isExpired ? 'text-rose-400' : 'text-emerald-400'}">${v.license_expiry || '--'}</td>
+            <td class="p-4 text-xs font-mono">${esc(v.vehicle_id)}</td>
+            <td class="p-4 font-medium">${esc(v.plate_number)}</td>
+            <td class="p-4 text-xs">${esc(v.model)}</td>
+            <td class="p-4 text-xs">${esc(v.type || '--')}</td>
+            <td class="p-4 text-xs ${isExpired ? 'text-rose-400' : 'text-emerald-400'}">${esc(v.license_expiry || '--')}</td>
             <td class="p-4 text-center">
-                <button onclick="editVehicle('${v.vehicle_id}')" class="px-2 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition"><i class="fa-solid fa-pen ml-1"></i> تعديل</button>
-                <button onclick="deleteVehicle('${v.vehicle_id}')" class="px-2 py-1 text-xs bg-rose-500/20 text-rose-400 rounded-lg hover:bg-rose-500/30 transition"><i class="fa-solid fa-trash ml-1"></i> حذف</button>
+                <button onclick="editVehicle('${esc(v.vehicle_id)}')" class="px-2 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition"><i class="fa-solid fa-pen ml-1"></i> تعديل</button>
+                <button onclick="deleteVehicle('${esc(v.vehicle_id)}')" class="px-2 py-1 text-xs bg-rose-500/20 text-rose-400 rounded-lg hover:bg-rose-500/30 transition"><i class="fa-solid fa-trash ml-1"></i> حذف</button>
             </td>
         `;
         fragment.appendChild(row);
@@ -2218,13 +2244,13 @@ function renderDriversTable(drivers) {
         const row = document.createElement("tr");
         row.className = "table-row hover:bg-hover transition";
         row.innerHTML = `
-            <td class="p-4 font-medium">${d.full_name}</td>
-            <td class="p-4 text-xs">${d.phone || '--'}</td>
-            <td class="p-4 text-xs">${d.license_number || '--'}</td>
+            <td class="p-4 font-medium">${esc(d.full_name)}</td>
+            <td class="p-4 text-xs">${esc(d.phone || '--')}</td>
+            <td class="p-4 text-xs">${esc(d.license_number || '--')}</td>
             <td class="p-4 text-xs ${d.current_advance > 0 ? 'text-amber-400' : 'text-emerald-400'}">${d.current_advance || 0}</td>
             <td class="p-4 text-center">
-                <button onclick="editDriver('${d.driver_id}')" class="px-2 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition"><i class="fa-solid fa-pen ml-1"></i> تعديل</button>
-                <button onclick="deleteDriver('${d.driver_id}')" class="px-2 py-1 text-xs bg-rose-500/20 text-rose-400 rounded-lg hover:bg-rose-500/30 transition"><i class="fa-solid fa-trash ml-1"></i> حذف</button>
+                <button onclick="editDriver('${esc(d.driver_id)}')" class="px-2 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition"><i class="fa-solid fa-pen ml-1"></i> تعديل</button>
+                <button onclick="deleteDriver('${esc(d.driver_id)}')" class="px-2 py-1 text-xs bg-rose-500/20 text-rose-400 rounded-lg hover:bg-rose-500/30 transition"><i class="fa-solid fa-trash ml-1"></i> حذف</button>
             </td>
         `;
         fragment.appendChild(row);
@@ -2417,12 +2443,12 @@ function renderClientsTable(clients) {
         const row = document.createElement("tr");
         row.className = "table-row hover:bg-hover transition";
         row.innerHTML = `
-            <td class="p-4 font-medium">${c.client_name}</td>
-            <td class="p-4 text-xs">${c.phone || '--'}</td>
-            <td class="p-4 text-xs">${c.address || '--'}</td>
+            <td class="p-4 font-medium">${esc(c.client_name)}</td>
+            <td class="p-4 text-xs">${esc(c.phone || '--')}</td>
+            <td class="p-4 text-xs">${esc(c.address || '--')}</td>
             <td class="p-4 text-center">
-                <button onclick="editClient('${c.client_id}')" class="px-2 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition"><i class="fa-solid fa-pen ml-1"></i> تعديل</button>
-                <button onclick="deleteClient('${c.client_id}')" class="px-2 py-1 text-xs bg-rose-500/20 text-rose-400 rounded-lg hover:bg-rose-500/30 transition"><i class="fa-solid fa-trash ml-1"></i> حذف</button>
+                <button onclick="editClient('${esc(c.client_id)}')" class="px-2 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition"><i class="fa-solid fa-pen ml-1"></i> تعديل</button>
+                <button onclick="deleteClient('${esc(c.client_id)}')" class="px-2 py-1 text-xs bg-rose-500/20 text-rose-400 rounded-lg hover:bg-rose-500/30 transition"><i class="fa-solid fa-trash ml-1"></i> حذف</button>
             </td>
         `;
         fragment.appendChild(row);
@@ -2647,7 +2673,10 @@ async function populateBalanceUserFilter() {
                 select.innerHTML = '<option value="">كل المستخدمين</option>';
                 res.data.forEach(u => {
                     if (u.status !== 'ACTIVE') return;
-                    select.innerHTML += `<option value="${u.user_id}">${u.full_name || u.username}</option>`;
+                    const opt = document.createElement("option");
+                    opt.value = u.user_id;
+                    opt.textContent = u.full_name || u.username;
+                    select.appendChild(opt);
                 });
                 return;
             }
@@ -2695,11 +2724,11 @@ function renderBalanceTable(transactions) {
         const isPositive = t.amount > 0;
         row.innerHTML = `
             <td class="p-4 text-xs">${t.created_at ? new Date(t.created_at).toLocaleString('ar-EG') : ''}</td>
-            <td class="p-4 text-xs font-mono">${t.user_id || '--'}</td>
-            <td class="p-4 text-xs">${typeMap[t.transaction_type] || t.transaction_type}</td>
+            <td class="p-4 text-xs font-mono">${esc(t.user_id || '--')}</td>
+            <td class="p-4 text-xs">${esc(typeMap[t.transaction_type] || t.transaction_type)}</td>
             <td class="p-4 text-xs ${isPositive ? 'text-emerald-400' : 'text-rose-400'}">${t.amount || 0}</td>
             <td class="p-4 text-xs">${t.balance_after || 0}</td>
-            <td class="p-4 text-xs text-muted">${t.notes || ''}</td>
+            <td class="p-4 text-xs text-muted">${esc(t.notes || '')}</td>
         `;
         fragment.appendChild(row);
     });
@@ -2955,15 +2984,15 @@ function renderNotifications(notifications) {
                 <div class="flex-1">
                     <div class="flex items-center gap-2">
                         ${!n.is_read ? '<span class="w-2 h-2 bg-amber-500 rounded-full"></span>' : ''}
-                        <h4 class="font-bold text-sm">${n.title}</h4>
+                        <h4 class="font-bold text-sm">${esc(n.title)}</h4>
                         <span class="text-xs text-muted">${new Date(n.created_at).toLocaleString('ar-EG')}</span>
                     </div>
-                    <p class="text-sm text-muted mt-1">${n.message}</p>
-                    ${n.related_id ? `<p class="text-xs text-muted mt-1">🔗 ${n.related_id}</p>` : ''}
+                    <p class="text-sm text-muted mt-1">${esc(n.message)}</p>
+                    ${n.related_id ? `<p class="text-xs text-muted mt-1">🔗 ${esc(n.related_id)}</p>` : ''}
                 </div>
                 <div class="flex gap-2">
-                    ${!n.is_read ? `<button onclick="markNotificationRead('${n.notification_id}')" class="text-xs text-amber-400 hover:text-amber-300 transition"><i class="fa-solid fa-check"></i></button>` : ''}
-                    <button onclick="deleteNotification('${n.notification_id}')" class="text-xs text-rose-400 hover:text-rose-300 transition"><i class="fa-solid fa-trash"></i></button>
+                    ${!n.is_read ? `<button onclick="markNotificationRead('${esc(n.notification_id)}')" class="text-xs text-amber-400 hover:text-amber-300 transition"><i class="fa-solid fa-check"></i></button>` : ''}
+                    <button onclick="deleteNotification('${esc(n.notification_id)}')" class="text-xs text-rose-400 hover:text-rose-300 transition"><i class="fa-solid fa-trash"></i></button>
                 </div>
             </div>
         `;
@@ -3092,12 +3121,12 @@ function renderUsersTable(users) {
         const actions = isAdmin ?
             `<span class="text-xs text-muted"><i class="fa-solid fa-shield ml-1"></i>محمي</span>` :
             `
-                <button onclick="editUserRole('${user.user_id}', '${user.role}')" class="px-2 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition"><i class="fa-solid fa-pen ml-1"></i> دور</button>
-                <button onclick="resetUserPassword('${user.user_id}')" class="px-2 py-1 text-xs bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition"><i class="fa-solid fa-key ml-1"></i> كلمة سر</button>
-                <button onclick="toggleUserStatus('${user.user_id}', '${user.status}')" class="px-2 py-1 text-xs ${user.status === 'ACTIVE' ? 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/30' : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'} rounded-lg transition">
+                <button onclick="editUserRole('${esc(user.user_id)}', '${esc(user.role)}')" class="px-2 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition"><i class="fa-solid fa-pen ml-1"></i> دور</button>
+                <button onclick="resetUserPassword('${esc(user.user_id)}')" class="px-2 py-1 text-xs bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition"><i class="fa-solid fa-key ml-1"></i> كلمة سر</button>
+                <button onclick="toggleUserStatus('${esc(user.user_id)}', '${esc(user.status)}')" class="px-2 py-1 text-xs ${user.status === 'ACTIVE' ? 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/30' : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'} rounded-lg transition">
                     ${user.status === 'ACTIVE' ? '<i class="fa-solid fa-pause ml-1"></i>تعطيل' : '<i class="fa-solid fa-play ml-1"></i>تفعيل'}
                 </button>
-                <button onclick="deleteUser('${user.user_id}')" class="px-2 py-1 text-xs bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 rounded-lg transition">
+                <button onclick="deleteUser('${esc(user.user_id)}')" class="px-2 py-1 text-xs bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 rounded-lg transition">
                     <i class="fa-solid fa-trash ml-1"></i>حذف
                 </button>
             `;
@@ -3105,8 +3134,8 @@ function renderUsersTable(users) {
         const row = document.createElement("tr");
         row.className = "table-row hover:bg-hover transition";
         row.innerHTML = `
-            <td class="p-4 font-medium">${user.full_name}</td>
-            <td class="p-4 text-xs font-mono text-muted">${user.username}</td>
+            <td class="p-4 font-medium">${esc(user.full_name)}</td>
+            <td class="p-4 text-xs font-mono text-muted">${esc(user.username)}</td>
             <td class="p-4">${roleBadge}</td>
             <td class="p-4">${statusBadge}</td>
             <td class="p-4 text-center">${actions}</td>
@@ -3568,7 +3597,7 @@ async function loadPermissionsMatrix() {
     try {
         const res = await callBackend('getPermissions', {});
         if (!res.success) {
-            container.innerHTML = `<p class="text-sm text-rose-500 p-4 text-center">فشل تحميل الصلاحيات: ${res.message}</p>`;
+            container.innerHTML = `<p class="text-sm text-rose-500 p-4 text-center">فشل تحميل الصلاحيات: ${esc(res.message)}</p>`;
             return;
         }
 
@@ -3576,7 +3605,7 @@ async function loadPermissionsMatrix() {
         renderPermissionsMatrix(container, permissionsData);
         saveBtn.classList.remove('hidden');
     } catch (err) {
-        container.innerHTML = `<p class="text-sm text-rose-500 p-4 text-center">خطأ: ${err.message}</p>`;
+        container.innerHTML = `<p class="text-sm text-rose-500 p-4 text-center">خطأ: ${esc(err.message)}</p>`;
     }
 }
 
