@@ -715,7 +715,7 @@ async function loadFuelAnalytics() {
                 }
                 tbody.innerHTML = data.vehicles.map(v => `
                     <tr class="border-b border-border hover:bg-secondary/30 transition">
-                        <td class="py-2 px-2 font-medium">${esc(v.vehicle_id)}</td>
+                        <td class="py-2 px-2 font-medium">${esc(lookupVehicleLabel(v.vehicle_id || v.Vehicle_ID))}</td>
                         <td class="py-2 px-2 font-mono">${esc(v.total_liters)}</td>
                         <td class="py-2 px-2 font-mono">${esc((v.total_cost || 0).toLocaleString())}</td>
                         <td class="py-2 px-2">${esc(v.trip_count)}</td>
@@ -736,12 +736,12 @@ async function loadFuelAnalytics() {
             setText('fuel-analytics-avg', initialTxns.length > 0 ? (totalLiters / initialTxns.length).toFixed(1) : 0);
             setText('fuel-analytics-trips', tripCount);
             const vehicleMap = {};
-            initialTxns.filter(t => t.Trip_ID).forEach(t => {
-                const vId = t.Vehicle_ID || t.Vehicle_Number || 'أخرى';
+            initialTxns.filter(t => t.Trip_ID || t.trip_id).forEach(t => {
+                const vId = t.Vehicle_ID || t.Vehicle_Number || t.vehicle_id || t.vehicle_number || 'أخرى';
                 if (!vehicleMap[vId]) vehicleMap[vId] = { liters: 0, cost: 0, trips: new Set() };
-                vehicleMap[vId].liters += parseFloat(t.Amount_Liters) || 0;
-                vehicleMap[vId].cost += parseFloat(t.Amount_EGP) || 0;
-                vehicleMap[vId].trips.add(t.Trip_ID);
+                vehicleMap[vId].liters += parseFloat(t.Amount_Liters || t.amount_liters) || 0;
+                vehicleMap[vId].cost += parseFloat(t.Amount_EGP || t.amount_egp) || 0;
+                vehicleMap[vId].trips.add(t.Trip_ID || t.trip_id);
             });
             const tbody = document.querySelector("#fuel-analytics-table tbody");
             if (!tbody) return;
@@ -752,7 +752,7 @@ async function loadFuelAnalytics() {
             }
             tbody.innerHTML = entries.map(([vId, v]) => `
                 <tr class="border-b border-border hover:bg-secondary/30 transition">
-                    <td class="py-2 px-2 font-medium">${esc(vId)}</td>
+                    <td class="py-2 px-2 font-medium">${esc(lookupVehicleLabel(vId))}</td>
                     <td class="py-2 px-2 font-mono">${v.liters.toFixed(1)}</td>
                     <td class="py-2 px-2 font-mono">${v.cost.toLocaleString()}</td>
                     <td class="py-2 px-2">${v.trips.size}</td>
