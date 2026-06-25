@@ -612,6 +612,9 @@ async function refreshDashboard(forceRefresh = false) {
         if (!drivers.length) {
             try { const r = await callBackend("getDriversList"); drivers = r?.data || []; } catch (e) {}
         }
+        let users = [];
+        try { const r = await callBackend("getUsers"); users = r?.data || []; } catch (e) {}
+        if (users.length) state.cache.users = users;
 
         // كروت Dashboard
         animateCounter(document.getElementById("stat-active-trips"), d.active_trips || 0);
@@ -983,6 +986,7 @@ function renderTripsTable(trips) {
             <td class="p-4 font-medium">${esc(lookupDriverName(trip[3]))}</td>
             <td class="p-4 text-xs">${esc(lookupVehicleLabel(trip[4]))}</td>
             <td class="p-4 font-mono text-xs text-amber-400">${parseFloat(trip[14] || 0).toFixed(1)} لتر</td>
+            <td class="p-4 text-xs text-muted">${esc(lookupUserName(trip[9]))}</td>
             <td class="p-4"><span class="px-2.5 py-1 rounded-full text-xs font-semibold ${badgeClass}">${statusLabel}</span></td>
             <td class="p-4 text-center">${actionButtons}</td>
         `;
@@ -1383,7 +1387,7 @@ function renderExpensesTable(expenses) {
     if (countEl) countEl.innerText = `${filtered.length} مصروف`;
     
     if (!filtered.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center text-muted">لا توجد مصروفات</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-muted">لا توجد مصروفات</td></tr>';
         return;
     }
     
@@ -1398,6 +1402,7 @@ function renderExpensesTable(expenses) {
                 <td class="py-2.5 px-3 font-mono font-bold">${(ex.amount || 0).toLocaleString()} ج.م</td>
                 <td class="py-2.5 px-3">${hasReceipt ? `<a href="https://drive.google.com/file/d/${esc(ex.receipt_file_id)}/view" target="_blank" class="text-sky-400 hover:text-sky-300" title="عرض الإيصال"><i class="fa-solid fa-image"></i></a>` : '<span class="text-muted/50">—</span>'}</td>
                 <td class="py-2.5 px-3 text-muted text-[10px]">${formatDate(ex.created_at)}</td>
+                <td class="py-2.5 px-3 text-xs text-muted">${esc(lookupUserName(ex.created_by))}</td>
                 <td class="py-2.5 px-3 text-center">
                     ${showActions ? `
                         <button class="text-amber-400 hover:text-amber-300 mx-1 edit-expense-btn" data-id="${esc(ex.expense_id)}" title="تعديل"><i class="fa-solid fa-pen-to-square"></i></button>
@@ -1641,7 +1646,7 @@ async function loadFuelTransactions() {
         } catch (e) { console.warn('Firebase error', e); }
     }
     // Show loading in both tables
-    const loadingRow = `<tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
+    const loadingRow = `<tr><td colspan="7" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
     const tb1 = document.getElementById("table-fuel-transactions");
     const tb2 = document.getElementById("table-fuel-body");
     if (tb1) tb1.innerHTML = loadingRow;
@@ -1655,7 +1660,7 @@ async function loadFuelTransactions() {
             renderFuelTransactions(response.data);
         }
     } catch (err) {
-        const errRow = `<tr><td colspan="6" class="p-8 text-center text-rose-500">فشل جلب البيانات</td></tr>`;
+        const errRow = `<tr><td colspan="7" class="p-8 text-center text-rose-500">فشل جلب البيانات</td></tr>`;
         if (tb1) tb1.innerHTML = errRow;
         if (tb2) tb2.innerHTML = errRow;
     }
@@ -1669,7 +1674,7 @@ function renderFuelTransactions(transactions) {
 
     if (tbodies.length === 0) return;
 
-    const emptyRow = `<tr><td colspan="6" class="p-8 text-center text-muted">لا توجد حركات</td></tr>`;
+    const emptyRow = `<tr><td colspan="7" class="p-8 text-center text-muted">لا توجد حركات</td></tr>`;
 
     if (!transactions || transactions.length === 0) {
         tbodies.forEach(tb => { tb.innerHTML = emptyRow; });
@@ -1688,11 +1693,12 @@ function renderFuelTransactions(transactions) {
     transactions.forEach(t => {
         const cells = `
             <td class="p-3 text-xs">${t.created_at ? new Date(t.created_at).toLocaleString('ar-EG') : ''}</td>
-            <td class="p-3 text-xs">${t.vehicle_id || '--'}</td>
+            <td class="p-3 text-xs">${esc(lookupVehicleLabel(t.vehicle_id))}</td>
             <td class="p-3 text-xs">${typeMap[t.transaction_type] || t.transaction_type}</td>
             <td class="p-3 text-xs">${t.amount_liters || 0}</td>
             <td class="p-3 text-xs ${t.amount_egp < 0 ? 'text-rose-400' : 'text-emerald-400'}">${t.amount_egp || 0}</td>
             <td class="p-3 text-xs">${t.source || '--'}</td>
+            <td class="p-3 text-xs text-muted">${esc(lookupUserName(t.created_by))}</td>
         `;
         const row1 = document.createElement("tr");
         row1.className = "table-row hover:bg-hover transition";
@@ -1733,7 +1739,7 @@ async function loadMaintenanceData(forceRefresh = false) {
         } catch (e) { console.warn('Firebase error', e); }
     }
 
-    tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>';
 
     try {
         const res = await callBackend("getMaintenance", { Limit: 100 });
@@ -1744,12 +1750,12 @@ async function loadMaintenanceData(forceRefresh = false) {
         const filterEl = document.getElementById("filter-maintenance-vehicle");
         const vehicleIds = [...new Set(data.map(r => r.vehicle_id).filter(Boolean))];
         filterEl.innerHTML = '<option value="">كل العربيات</option>' +
-            vehicleIds.map(v => `<option value="${v}">${v}</option>`).join('');
+            vehicleIds.map(v => `<option value="${v}">${esc(lookupVehicleLabel(v))}</option>`).join('');
 
         renderMaintenanceTable(data);
     } catch (err) {
         handleStandardError(err);
-        tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-rose-400">فشل تحميل بيانات الصيانة.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-center text-rose-400">فشل تحميل بيانات الصيانة.</td></tr>';
     }
 }
 
@@ -1758,7 +1764,7 @@ function renderMaintenanceTable(data) {
     if (!tbody) return;
 
     if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-muted"><i class="fa-solid fa-circle-check ml-2 text-emerald-400"></i>لا توجد صيانات مسجلة.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-center text-muted"><i class="fa-solid fa-circle-check ml-2 text-emerald-400"></i>لا توجد صيانات مسجلة.</td></tr>';
         return;
     }
 
@@ -1768,12 +1774,13 @@ function renderMaintenanceTable(data) {
         row.className = "table-row hover:bg-hover transition";
         row.innerHTML = `
             <td class="p-3 text-xs">${r.created_at ? new Date(r.created_at).toLocaleString('ar-EG') : '--'}</td>
-            <td class="p-3 text-xs font-medium">${esc(r.vehicle_id || '--')}</td>
+            <td class="p-3 text-xs font-medium">${esc(lookupVehicleLabel(r.vehicle_id))}</td>
             <td class="p-3 text-xs">${esc(r.trip_id || '--')}</td>
             <td class="p-3 text-xs"><span class="badge badge-open">${esc(r.maintenance_type || '--')}</span></td>
             <td class="p-3 text-xs text-rose-400 font-mono">${r.amount || 0} ج.م</td>
             <td class="p-3 text-xs">${esc(r.workshop || '--')}</td>
             <td class="p-3 text-xs">${esc(r.odometer || '--')}</td>
+            <td class="p-3 text-xs text-muted">${esc(lookupUserName(r.created_by))}</td>
         `;
         fragment.appendChild(row);
     });
@@ -2706,7 +2713,7 @@ function renderBalanceTable(transactions) {
     const fragment = document.createDocumentFragment();
 
     if (!transactions || transactions.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-muted">لا توجد حركات</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-muted">لا توجد حركات</td></tr>`;
         return;
     }
 
@@ -2724,11 +2731,12 @@ function renderBalanceTable(transactions) {
         const isPositive = t.amount > 0;
         row.innerHTML = `
             <td class="p-4 text-xs">${t.created_at ? new Date(t.created_at).toLocaleString('ar-EG') : ''}</td>
-            <td class="p-4 text-xs font-mono">${esc(t.user_id || '--')}</td>
+            <td class="p-4 text-xs font-mono">${esc(lookupUserName(t.user_id))}</td>
             <td class="p-4 text-xs">${esc(typeMap[t.transaction_type] || t.transaction_type)}</td>
             <td class="p-4 text-xs ${isPositive ? 'text-emerald-400' : 'text-rose-400'}">${t.amount || 0}</td>
             <td class="p-4 text-xs">${t.balance_after || 0}</td>
             <td class="p-4 text-xs text-muted">${esc(t.notes || '')}</td>
+            <td class="p-4 text-xs text-muted">${esc(lookupUserName(t.created_by))}</td>
         `;
         fragment.appendChild(row);
     });
@@ -3396,6 +3404,12 @@ function lookupVehicleLabel(vehicleId) {
     if (!vehicleId) return "بدون";
     const vehicle = (state.cache.vehicles || []).find(v => v.vehicle_id === vehicleId);
     return vehicle ? `${vehicle.plate_number} (${vehicle.model})` : vehicleId;
+}
+
+function lookupUserName(userId) {
+    if (!userId) return "—";
+    const user = (state.cache.users || []).find(u => u.User_ID === userId);
+    return user ? user.Full_Name : userId;
 }
 
 // ─── أدوات مساعدة ───
