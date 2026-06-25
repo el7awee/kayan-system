@@ -162,8 +162,8 @@ function permissionService_getAll(ss) {
 /**
  * حفظ الصلاحيات من الواجهة الأمامية
  */
-function permissionService_save(ss, params) {
-  let payload = params.bodyPayload;
+function permissionService_save(ss, e) {
+  let payload = e.parameter.bodyPayload;
   if (!payload) {
     return { success: false, message: 'لا توجد بيانات للحفظ' };
   }

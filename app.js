@@ -5,7 +5,7 @@
  */
 
 // ─── 1️⃣ الإعدادات والثوابت العالمية ───
-const BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbw-3ktWzza_M8FPde44FnYO9uErjC2xFYudCoEejJyb7MklJtwhYwfxqZtw82SLQZDz/exec";
+const BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbxY5MpImfxoPanGC1mXfOGpFWs1s_O1xxsSgyFA_KPy-ClBlpEXCItBVOutwokNj9Cs/exec";
 
 // حالة التطبيق المحلية
 const state = {
