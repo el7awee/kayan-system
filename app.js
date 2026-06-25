@@ -795,6 +795,19 @@ async function loadDropdowns(forceRefresh = false) {
             const response = await callBackend("getLookups");
             lookups = response.data || {};
         }
+        // تحميل cache المستخدمين
+        try {
+            let usersData = [];
+            if (USE_FIREBASE && window.fbDb) {
+                const uRes = await window.fbDbAPI.getUsers();
+                if (uRes.success) usersData = uRes.data || [];
+            }
+            if (!usersData.length) {
+                const uRes = await callBackend("getUsers");
+                usersData = uRes?.data || [];
+            }
+            if (usersData.length) state.cache.users = usersData;
+        } catch (e) { console.warn('Failed to load users cache', e); }
         const lk = lookups || {};
         const clientsRes = { data: lk.clients };
         const driversRes = { data: lk.drivers };
@@ -926,7 +939,7 @@ async function loadTripsData(forceRefresh = false) {
         } catch (e) { console.warn('Firebase error', e); }
     }
 
-    tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
 
     try {
         const response = await callBackend("getTrips", { Limit: 50 });
@@ -934,7 +947,7 @@ async function loadTripsData(forceRefresh = false) {
         state.activeTrips = state.cache.trips;
         renderTripsTable(state.cache.trips);
     } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-rose-500">فشل جلب البيانات</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-rose-500">فشل جلب البيانات</td></tr>`;
         console.error("loadTripsData Error:", err);
     }
 }
@@ -947,7 +960,7 @@ function renderTripsTable(trips) {
     const validTrips = trips.filter(t => t[0] && t[0] !== "Trip_ID" && !(t[13] === true || t[13] === "TRUE"));
 
     if (validTrips.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-muted">لا يوجد رحلات</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-muted">لا يوجد رحلات</td></tr>`;
         return;
     }
 
@@ -983,6 +996,7 @@ function renderTripsTable(trips) {
         row.className = "table-row hover:bg-hover transition";
         row.innerHTML = `
             <td class="p-4 font-mono text-xs text-muted">${esc(tripId)}</td>
+            <td class="p-4 text-xs">${esc(lookupClientName(trip[2]))}</td>
             <td class="p-4 font-medium">${esc(lookupDriverName(trip[3]))}</td>
             <td class="p-4 text-xs">${esc(lookupVehicleLabel(trip[4]))}</td>
             <td class="p-4 font-mono text-xs text-amber-400">${parseFloat(trip[14] || 0).toFixed(1)} لتر</td>
@@ -3396,20 +3410,26 @@ function initAllTableSearch() {
 // ─── 6️⃣ الدوال المساعدة ───
 function lookupDriverName(driverId) {
     if (!driverId) return "بدون";
-    const driver = (state.cache.drivers || []).find(d => d.driver_id === driverId);
-    return driver ? driver.full_name : driverId;
+    const driver = (state.cache.drivers || []).find(d => d.driver_id === driverId || d.Driver_ID === driverId);
+    return driver ? (driver.full_name || driver.Full_Name) : driverId;
 }
 
 function lookupVehicleLabel(vehicleId) {
     if (!vehicleId) return "بدون";
-    const vehicle = (state.cache.vehicles || []).find(v => v.vehicle_id === vehicleId);
-    return vehicle ? `${vehicle.plate_number} (${vehicle.model})` : vehicleId;
+    const vehicle = (state.cache.vehicles || []).find(v => v.vehicle_id === vehicleId || v.Vehicle_ID === vehicleId);
+    return vehicle ? `${vehicle.plate_number || vehicle.Plate_Number} (${vehicle.model || vehicle.Model})` : vehicleId;
 }
 
 function lookupUserName(userId) {
     if (!userId) return "—";
-    const user = (state.cache.users || []).find(u => u.User_ID === userId);
-    return user ? user.Full_Name : userId;
+    const user = (state.cache.users || []).find(u => u.User_ID === userId || u.user_id === userId);
+    return user ? (user.Full_Name || user.full_name) : userId;
+}
+
+function lookupClientName(clientId) {
+    if (!clientId) return "—";
+    const client = (state.cache.clients || []).find(c => c.client_id === clientId || c.Client_ID === clientId);
+    return client ? (client.client_name || client.Client_Name) : clientId;
 }
 
 // ─── أدوات مساعدة ───
