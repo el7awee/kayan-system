@@ -292,5 +292,13 @@ function throwBusinessError(code, message) {
  * ─── دالة التحقق من صلاحية المستخدم (واجهة مبسطة) ───
  */
 function authService_checkPermission(userRole, action) {
-  return validateRoleAccessFromSheet(action, userRole);
+  // اجمع الصلاحيات من الشيت و hardcoded
+  let allowed = validateRoleAccessFromSheet(action, userRole);
+  if (allowed) return true;
+  
+  // fallback مباشر للـ hardcoded
+  let hardcoded = ROLE_PERMISSIONS[userRole];
+  if (hardcoded && hardcoded.indexOf(action) !== -1) return true;
+  
+  return false;
 }

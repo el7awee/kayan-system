@@ -668,11 +668,15 @@ async function loadFuelAnalytics() {
             const res = await callBackend("getFuelAnalytics").catch(() => ({}));
             const data = res?.data;
             if (data) {
-                document.getElementById("fuel-analytics-total").innerText = data.total_liters || 0;
-                document.getElementById("fuel-analytics-cost").innerText = (data.total_cost || 0).toLocaleString('ar-EG');
+                const elTotal = document.getElementById("fuel-analytics-total");
+                const elCost = document.getElementById("fuel-analytics-cost");
+                const elAvg = document.getElementById("fuel-analytics-avg");
+                const elTrips = document.getElementById("fuel-analytics-trips");
+                if (elTotal) elTotal.innerText = data.total_liters || 0;
+                if (elCost) elCost.innerText = (data.total_cost || 0).toLocaleString('ar-EG');
                 const avg = data.vehicles?.length > 0 ? (data.total_liters / data.vehicles.length).toFixed(1) : 0;
-                document.getElementById("fuel-analytics-avg").innerText = avg;
-                document.getElementById("fuel-analytics-trips").innerText = data.trip_count || 0;
+                if (elAvg) elAvg.innerText = avg;
+                if (elTrips) elTrips.innerText = data.trip_count || 0;
                 const tbody = document.querySelector("#fuel-analytics-table tbody");
                 if (!tbody) return;
                 if (!data.vehicles || data.vehicles.length === 0) {
@@ -696,10 +700,11 @@ async function loadFuelAnalytics() {
             const totalLiters = initialTxns.reduce((s, t) => s + (parseFloat(t.Amount_Liters) || 0), 0);
             const totalCost = initialTxns.reduce((s, t) => s + (parseFloat(t.Amount_EGP) || 0), 0);
             const tripCount = new Set(initialTxns.map(t => t.Trip_ID).filter(Boolean)).size;
-            document.getElementById("fuel-analytics-total").innerText = totalLiters || 0;
-            document.getElementById("fuel-analytics-cost").innerText = (totalCost || 0).toLocaleString('ar-EG');
-            document.getElementById("fuel-analytics-avg").innerText = initialTxns.length > 0 ? (totalLiters / initialTxns.length).toFixed(1) : 0;
-            document.getElementById("fuel-analytics-trips").innerText = tripCount;
+            const setText = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
+            setText('fuel-analytics-total', totalLiters || 0);
+            setText('fuel-analytics-cost', (totalCost || 0).toLocaleString('ar-EG'));
+            setText('fuel-analytics-avg', initialTxns.length > 0 ? (totalLiters / initialTxns.length).toFixed(1) : 0);
+            setText('fuel-analytics-trips', tripCount);
             const vehicleMap = {};
             initialTxns.filter(t => t.Trip_ID).forEach(t => {
                 const vId = t.Vehicle_ID || t.Vehicle_Number || 'أخرى';
