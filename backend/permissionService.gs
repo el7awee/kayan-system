@@ -57,16 +57,22 @@ function getPermissionsFromSheet(ss) {
     return JSON.parse(JSON.stringify(ROLE_PERMISSIONS));
   }
   
+  // تحقق أن الرؤوس تحتوي على أدوار معروفة
+  let knownRoles = ['Admin', 'Manager', 'Operations', 'Accountant'];
+  let headerMatch = false;
+  for (let col = 1; col < data[0].length; col++) {
+    let roleName = String(data[0][col]).trim();
+    if (knownRoles.includes(roleName)) { headerMatch = true; break; }
+  }
+  if (!headerMatch) {
+    return JSON.parse(JSON.stringify(ROLE_PERMISSIONS));
+  }
+  
   let result = {};
-  // Row 0 = header: role names
   let roles = [];
   for (let col = 1; col < data[0].length; col++) {
     let roleName = String(data[0][col]).trim();
     if (roleName) roles.push(roleName);
-  }
-  
-  if (roles.length === 0) {
-    return JSON.parse(JSON.stringify(ROLE_PERMISSIONS));
   }
   
   roles.forEach(r => result[r] = []);
@@ -176,7 +182,17 @@ function validateRoleAccessFromSheet(action, userRole) {
   let ss = SpreadsheetApp.getActiveSpreadsheet();
   let permissions = getPermissionsFromSheet(ss);
   
+  // جرب من الشيت الأول
   let allowedActions = permissions[userRole];
-  if (!allowedActions) return false;
-  return allowedActions.indexOf(action) !== -1;
+  if (allowedActions && allowedActions.indexOf(action) !== -1) {
+    return true;
+  }
+  
+  // لو مش موجود في الشيت، استخدم الـ hardcoded كـ fallback آمن
+  let hardcoded = ROLE_PERMISSIONS[userRole];
+  if (hardcoded && hardcoded.indexOf(action) !== -1) {
+    return true;
+  }
+  
+  return false;
 }
