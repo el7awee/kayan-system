@@ -222,12 +222,6 @@ function bindUIEvents() {
     document.getElementById("filter-expense-category")?.addEventListener("change", () => loadExpensesData());
     document.getElementById("search-expenses")?.addEventListener("input", debounce(() => loadExpensesData(), 300));
 
-    // إظهار/إخفاء حقل اللترات حسب التصنيف
-    document.getElementById("expense-category")?.addEventListener("change", function() {
-        const wrap = document.getElementById("exp-fuel-liters-wrap");
-        if (wrap) wrap.style.display = (this.value === "بنزين / سولار") ? "block" : "none";
-    });
-
     // البنزينة
     document.getElementById("btn-add-fuel-balance")?.addEventListener("click", handleAddFuelBalance);
     document.getElementById("btn-update-fuel-price")?.addEventListener("click", handleUpdateFuelPrice);
@@ -1055,10 +1049,9 @@ async function loadExpensesData(forceRefresh = false) {
         return;
     }
 
-    tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
 
     try {
-        // جلب كل المصروفات
         const res = await callBackend("getExpenses", { Limit: 500 });
         const expenses = res?.data || [];
         expensesCache = expenses;
@@ -1067,25 +1060,23 @@ async function loadExpensesData(forceRefresh = false) {
         const monthlyRes = await callBackend("getMonthlyExpenses");
         const monthly = monthlyRes?.data;
         if (monthly) {
-            const total = monthly.total || 0;
-            animateCounter(document.getElementById("exp-summary-total"), total, ' ج.م');
+            animateCounter(document.getElementById("exp-summary-total"), monthly.total || 0, ' ج.م');
             
-            // Breakdown by category
-            let fuelTotal = 0, tollTotal = 0, otherTotal = 0;
+            let utilitiesTotal = 0, rentTotal = 0, otherTotal = 0;
             (monthly.expenses || []).forEach(ex => {
-                if (ex.category === "بنزين / سولار") fuelTotal += ex.amount;
-                else if (ex.category === "كارتة طرق") tollTotal += ex.amount;
+                if (ex.category === "كهرباء" || ex.category === "مياه" || ex.category === "نت") utilitiesTotal += ex.amount;
+                else if (ex.category === "إيجار") rentTotal += ex.amount;
                 else otherTotal += ex.amount;
             });
-            animateCounter(document.getElementById("exp-summary-fuel"), fuelTotal, ' ج.م');
-            animateCounter(document.getElementById("exp-summary-toll"), tollTotal, ' ج.م');
+            animateCounter(document.getElementById("exp-summary-utilities"), utilitiesTotal, ' ج.م');
+            animateCounter(document.getElementById("exp-summary-rent"), rentTotal, ' ج.م');
             animateCounter(document.getElementById("exp-summary-other"), otherTotal, ' ج.م');
         }
         
         renderExpensesTable(expenses);
         
     } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-rose-400">فشل التحميل</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-rose-400">فشل التحميل</td></tr>`;
         handleStandardError(err);
     }
 }
@@ -1095,7 +1086,6 @@ function renderExpensesTable(expenses) {
     const countEl = document.getElementById("exp-table-count");
     if (!tbody) return;
     
-    // Apply category filter
     const catFilter = document.getElementById("filter-expense-category")?.value;
     const searchQuery = (document.getElementById("search-expenses")?.value || "").toLowerCase();
     
@@ -1103,8 +1093,8 @@ function renderExpensesTable(expenses) {
     if (catFilter) filtered = filtered.filter(e => e.category === catFilter);
     if (searchQuery) {
         filtered = filtered.filter(e =>
-            (e.trip_id || "").toLowerCase().includes(searchQuery) ||
             (e.category || "").toLowerCase().includes(searchQuery) ||
+            (e.description || "").toLowerCase().includes(searchQuery) ||
             (e.amount || "").toString().includes(searchQuery)
         );
     }
@@ -1112,20 +1102,20 @@ function renderExpensesTable(expenses) {
     if (countEl) countEl.innerText = `${filtered.length} مصروف`;
     
     if (!filtered.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-muted">لا توجد مصروفات</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center text-muted">لا توجد مصروفات</td></tr>';
         return;
     }
     
     tbody.innerHTML = filtered.map(ex => {
         const isOwner = state.user.id === ex.created_by;
         const showActions = state.user.role === "Admin" || state.user.role === "Manager" || isOwner;
+        const hasReceipt = ex.receipt_file_id && ex.receipt_file_id !== "0" && ex.receipt_file_id !== "";
         return `
             <tr class="border-b border-border hover:bg-secondary/20 transition">
-                <td class="py-2.5 px-3 font-mono text-[11px]">${ex.trip_id || '<span class="text-muted">عام</span>'}</td>
-                <td class="py-2.5 px-3">${ex.driver_id || '—'}</td>
-                <td class="py-2.5 px-3">${ex.vehicle_id || '—'}</td>
                 <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded-full text-[10px] ${getCategoryBadge(ex.category)}">${ex.category}</span></td>
+                <td class="py-2.5 px-3 text-muted max-w-[200px] truncate" title="${ex.description || ''}">${ex.description || '<span class="text-muted/50">—</span>'}</td>
                 <td class="py-2.5 px-3 font-mono font-bold">${(ex.amount || 0).toLocaleString()} ج.م</td>
+                <td class="py-2.5 px-3">${hasReceipt ? `<a href="https://drive.google.com/file/d/${ex.receipt_file_id}/view" target="_blank" class="text-sky-400 hover:text-sky-300" title="عرض الإيصال"><i class="fa-solid fa-image"></i></a>` : '<span class="text-muted/50">—</span>'}</td>
                 <td class="py-2.5 px-3 text-muted text-[10px]">${formatDate(ex.created_at)}</td>
                 <td class="py-2.5 px-3 text-center">
                     ${showActions ? `
@@ -1137,7 +1127,6 @@ function renderExpensesTable(expenses) {
         `;
     }).join('');
     
-    // Bind edit/delete events
     tbody.querySelectorAll(".edit-expense-btn").forEach(btn => {
         btn.addEventListener("click", () => handleExpenseEdit(btn.dataset.id));
     });
@@ -1148,11 +1137,13 @@ function renderExpensesTable(expenses) {
 
 function getCategoryBadge(cat) {
     const map = {
-        "بنزين / سولار": "bg-sky-500/10 text-sky-400",
-        "كارتة طرق": "bg-amber-500/10 text-amber-400",
-        "صيانة": "bg-purple-500/10 text-purple-400",
-        "إكراميات": "bg-emerald-500/10 text-emerald-400",
-        "مبيت ومأكل": "bg-orange-500/10 text-orange-400",
+        "كهرباء": "bg-yellow-500/10 text-yellow-400",
+        "مياه": "bg-sky-500/10 text-sky-400",
+        "نت": "bg-violet-500/10 text-violet-400",
+        "إيجار": "bg-orange-500/10 text-orange-400",
+        "أدوات نظافة": "bg-emerald-500/10 text-emerald-400",
+        "قرطاسية": "bg-pink-500/10 text-pink-400",
+        "صيانة مكتب": "bg-purple-500/10 text-purple-400",
     };
     return map[cat] || "bg-rose-500/10 text-rose-400";
 }
@@ -1175,26 +1166,20 @@ function cancelExpenseEdit() {
 }
 
 async function handleExpenseEdit(expenseId) {
-    // Find expense in cache
     const expense = (expensesCache || []).find(e => e.expense_id === expenseId);
     if (!expense) {
         Swal.fire({ icon: 'error', title: 'خطأ', text: 'لم يتم العثور على المصروف.' });
         return;
     }
     
-    // Fill form
     document.getElementById("expense-edit-id").value = expenseId;
-    document.getElementById("expense-trip-id").value = expense.trip_id || '';
-    document.getElementById("expense-driver-id").value = expense.driver_id || '';
-    document.getElementById("expense-vehicle-id").value = expense.vehicle_id || '';
     document.getElementById("expense-category").value = expense.category || '';
+    document.getElementById("expense-description").value = expense.description || '';
     document.getElementById("expense-amount").value = expense.amount || 0;
     
-    // Show cancel button, change submit text
     document.getElementById("btn-expense-cancel-edit").classList.remove("hidden");
     document.getElementById("btn-expense-submit").innerHTML = '<i class="fa-solid fa-pen ml-1"></i> تحديث المصروف';
     
-    // Scroll to form
     document.querySelector("#view-expenses .card").scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -1226,13 +1211,11 @@ async function handleAddExpenseSubmit(e) {
     const submitBtn = document.getElementById("btn-expense-submit");
 
     // ✅ validation
-    const tripId = document.getElementById("expense-trip-id")?.value.trim();
-    const driverId = document.getElementById("expense-driver-id")?.value;
-    const vehicleId = document.getElementById("expense-vehicle-id")?.value;
     const category = document.getElementById("expense-category")?.value;
+    const description = document.getElementById("expense-description")?.value.trim();
     const amount = parseFloat(document.getElementById("expense-amount")?.value) || 0;
     if (!category || amount <= 0) {
-        Swal.fire({ icon: 'warning', title: 'بيانات ناقصة', text: 'الرجاء إدخال التصنيف والمبلغ.' });
+        Swal.fire({ icon: 'warning', title: 'بيانات ناقصة', text: 'الرجاء إدخال النوع والمبلغ.' });
         return;
     }
 
@@ -1242,12 +1225,9 @@ async function handleAddExpenseSubmit(e) {
     const fileNamePayload = document.getElementById("expense-file-name")?.value || "";
 
     const params = {
-        Trip_ID: tripId,
-        Driver_ID: driverId,
-        Vehicle_ID: vehicleId,
         Expense_Category: category,
+        Description: description,
         Amount: amount,
-        Fuel_Liters: parseFloat(document.getElementById("expense-fuel-liters")?.value) || 0,
         bodyPayload: {
             Receipt_File_Base64: base64Payload,
             File_Name: fileNamePayload
@@ -1257,14 +1237,13 @@ async function handleAddExpenseSubmit(e) {
     try {
         const editId = document.getElementById("expense-edit-id")?.value;
         if (editId) {
-            // Update mode
             params.Expense_ID = editId;
             await callBackend("updateExpense", params);
             Swal.fire({ icon: 'success', title: 'تم التحديث', timer: 1500, showConfirmButton: false });
             cancelExpenseEdit();
         } else {
             await callBackend("addExpense", params);
-            Swal.fire({ icon: 'success', title: 'تم الحفظ', text: 'تم تسجيل المصروف.', timer: 2000, showConfirmButton: false });
+            Swal.fire({ icon: 'success', title: 'تم الحفظ', timer: 1500, showConfirmButton: false });
             document.getElementById("form-add-expense").reset();
             document.getElementById("expense-file-base64").value = "";
             document.getElementById("expense-file-name").value = "";
