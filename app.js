@@ -261,6 +261,11 @@ function bindUIEvents() {
     // فلتر المصروفات
     document.getElementById("filter-expense-category")?.addEventListener("change", () => loadExpensesData());
     document.getElementById("search-expenses")?.addEventListener("input", debounce(() => loadExpensesData(), 300));
+    document.getElementById("filter-expense-from")?.addEventListener("change", () => loadExpensesData());
+    document.getElementById("filter-expense-to")?.addEventListener("change", () => loadExpensesData());
+    document.getElementById("filter-trip-from")?.addEventListener("change", () => loadTripsData(true));
+    document.getElementById("filter-trip-to")?.addEventListener("change", () => loadTripsData(true));
+    document.getElementById("filter-trip-status")?.addEventListener("change", () => loadTripsData(true));
 
     // البنزينة
     document.getElementById("btn-add-fuel-balance")?.addEventListener("click", handleAddFuelBalance);
@@ -1104,7 +1109,24 @@ function renderTripsTable() {
     const tbody = document.getElementById("table-trips-body");
     if (!tbody) return;
 
-    const { rows: validTrips, total } = getPaginatedData('trips', t => t[0] && t[0] !== "Trip_ID" && !(t[13] === true || t[13] === "TRUE"));
+    // Date range filter
+    const fromVal = document.getElementById("filter-trip-from")?.value;
+    const toVal = document.getElementById("filter-trip-to")?.value;
+    const statusFilter = document.getElementById("filter-trip-status")?.value;
+
+    const { rows: validTrips, total } = getPaginatedData('trips', t => {
+        if (!t[0] || t[0] === "Trip_ID" || t[13] === true || t[13] === "TRUE") return false;
+        if (statusFilter && t[7] !== statusFilter) return false;
+        if (fromVal && t[1]) {
+            const d = new Date(t[1]); const f = new Date(fromVal);
+            if (d < f) return false;
+        }
+        if (toVal && t[1]) {
+            const d = new Date(t[1]); const t2 = new Date(toVal); t2.setDate(t2.getDate() + 1);
+            if (d > t2) return false;
+        }
+        return true;
+    });
 
     if (validTrips.length === 0) {
         tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-muted">${total > 0 ? 'لا توجد نتائج في هذه الصفحة' : 'لا يوجد رحلات'}</td></tr>`;
@@ -1538,6 +1560,8 @@ function renderExpensesTable(expenses) {
     
     const catFilter = document.getElementById("filter-expense-category")?.value;
     const searchQuery = (document.getElementById("search-expenses")?.value || "").toLowerCase();
+    const fromVal = document.getElementById("filter-expense-from")?.value;
+    const toVal = document.getElementById("filter-expense-to")?.value;
     
     let filtered = expenses;
     if (catFilter) filtered = filtered.filter(e => e.category === catFilter);
@@ -1547,6 +1571,14 @@ function renderExpensesTable(expenses) {
             (e.description || "").toLowerCase().includes(searchQuery) ||
             (e.amount || "").toString().includes(searchQuery)
         );
+    }
+    if (fromVal) {
+        const f = new Date(fromVal);
+        filtered = filtered.filter(e => !e.created_at || new Date(e.created_at) >= f);
+    }
+    if (toVal) {
+        const t = new Date(toVal); t.setDate(t.getDate() + 1);
+        filtered = filtered.filter(e => !e.created_at || new Date(e.created_at) <= t);
     }
     
     if (countEl) countEl.innerText = `${filtered.length} مصروف`;
