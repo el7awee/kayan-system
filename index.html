@@ -784,9 +784,16 @@
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-muted mb-1">العربية</label>
-                                <select id="trip-vehicle-id" required class="w-full px-3 py-2 rounded-xl text-sm">
-                                    <option value="">-- اختر العربية --</option>
-                                </select>
+                                <div class="flex gap-2 mb-2">
+                                    <select id="vehicle-type-filter" class="w-1/3 px-2 py-1.5 rounded-xl text-xs border border-border bg-card">
+                                        <option value="">الكل</option>
+                                        <option value="جامبو">جامبو</option>
+                                        <option value="تريلا">تريلا</option>
+                                    </select>
+                                    <select id="trip-vehicle-id" required class="flex-1 px-3 py-2 rounded-xl text-sm">
+                                        <option value="">-- اختر العربية --</option>
+                                    </select>
+                                </div>
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-muted mb-1">خط السير</label>

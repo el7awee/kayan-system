@@ -818,27 +818,28 @@ async function loadDropdowns(forceRefresh = false) {
 
         if (vehiclesRes?.data) {
             state.cache.vehicles = vehiclesRes.data;
-            const tripSelect = document.getElementById("trip-vehicle-id");
-            if (tripSelect) {
-                tripSelect.innerHTML = '<option value="">-- اختر --</option>';
-                vehiclesRes.data.forEach(vehicle => {
+            const populateVeh = (selectId, showBusy = true) => {
+                const sel = document.getElementById(selectId);
+                if (!sel) return;
+                const filter = document.getElementById("vehicle-type-filter")?.value || "";
+                sel.innerHTML = '<option value="">-- اختر --</option>';
+                vehiclesRes.data.forEach(v => {
+                    if (filter && v.type !== filter) return;
                     const opt = document.createElement("option");
-                    opt.value = vehicle.vehicle_id;
-                    const isBusy = busyVehicleIds.has(vehicle.vehicle_id);
-                    opt.textContent = vehicle.plate_number + " (" + vehicle.model + ")" + (isBusy ? ' (❌ مشغول)' : '');
-                    if (isBusy) opt.disabled = true;
-                    tripSelect.appendChild(opt);
+                    opt.value = v.vehicle_id;
+                    const isBusy = busyVehicleIds.has(v.vehicle_id);
+                    const lbl = v.plate_number + " (" + (v.type || v.model || '--') + ")";
+                    opt.textContent = lbl + (showBusy && isBusy ? ' (❌ مشغول)' : '');
+                    if (showBusy && isBusy) opt.disabled = true;
+                    sel.appendChild(opt);
                 });
-            }
-            const expenseSelect = document.getElementById("expense-vehicle-id");
-            if (expenseSelect) {
-                expenseSelect.innerHTML = '<option value="">-- اختر --</option>';
-                vehiclesRes.data.forEach(vehicle => {
-                    const opt = document.createElement("option");
-                    opt.value = vehicle.vehicle_id;
-                    opt.textContent = vehicle.plate_number + " (" + vehicle.model + ")";
-                    expenseSelect.appendChild(opt);
-                });
+            };
+            populateVeh("trip-vehicle-id", true);
+            populateVeh("expense-vehicle-id", false);
+            // Live filter on type change
+            const filterEl = document.getElementById("vehicle-type-filter");
+            if (filterEl) {
+                filterEl.onchange = () => populateVeh("trip-vehicle-id", true);
             }
         }
 
