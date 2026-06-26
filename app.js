@@ -3219,13 +3219,6 @@ function renderReportTable(type, data) {
         });
         tbody.innerHTML = html;
     }
-        let html = "";
-        rows.forEach(r => {
-            const netClass = r.net >= 0 ? "text-green-400" : "text-rose-400";
-            html += `<tr><td class="p-4" data-label="السيارة">${esc(r.vehicleName)}</td><td class="p-4" data-label="الرحلات">${r.trips}</td><td class="p-4" data-label="المغلقة">${r.closedTrips}</td><td class="p-4 font-mono" data-label="الإيرادات">${r.revenue.toLocaleString()} ج.م</td><td class="p-4 font-mono" data-label="تكلفة الوقود">${r.fuelCost.toLocaleString()} ج.م</td><td class="p-4 font-mono ${netClass}" data-label="صافي الربح">${r.net.toLocaleString()} ج.م</td><td class="p-4 font-mono" data-label="متوسط الرحلة">${r.avgPerTrip.toLocaleString()} ج.م</td></tr>`;
-        });
-        tbody.innerHTML = html;
-    }
 }
 
 function exportReportToExcel() {
