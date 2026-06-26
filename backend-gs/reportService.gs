@@ -120,19 +120,28 @@ function reportService_getProfitLoss(params) {
  */
 function reportService_getExpenseBreakdown(params) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var fromDate = params.fromDate || "";
-  var toDate = params.toDate || "";
+  var data = getCachedData("Expenses_Log");
+  if (!data) return { success: false, message: "شيت Expenses_Log غير موجود." };
   
-  var sheet = ss.getSheetByName("Expenses_Log");
-  var rows = queryRange_(sheet, 3, fromDate, toDate);
+  var from = params.fromDate ? new Date(params.fromDate) : null;
+  var to = params.toDate ? new Date(params.toDate + "T23:59:59") : null;
   
   var categories = {};
   var total = 0;
   
-  for (var i = 0; i < rows.length; i++) {
-    if (rows[i][10] === true || rows[i][10] === "TRUE") continue;
-    var cat = (rows[i][4] || "أخرى").toString();
-    var amt = parseFloat(rows[i][5]) || 0;
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][10] === true || data[i][10] === "TRUE") continue;
+    // Include only COMPANY expenses for the dashboard chart
+    var expType = data[i][11] || "";
+    if (expType !== "COMPANY" && expType !== "") continue;
+    
+    var expDate = new Date(data[i][8]);
+    if (isNaN(expDate.getTime())) continue;
+    if (from && expDate < from) continue;
+    if (to && expDate > to) continue;
+    
+    var cat = (data[i][4] || "أخرى").toString();
+    var amt = parseFloat(data[i][5]) || 0;
     categories[cat] = (categories[cat] || 0) + amt;
     total += amt;
   }
@@ -140,14 +149,14 @@ function reportService_getExpenseBreakdown(params) {
   var breakdown = {};
   var catKeys = Object.keys(categories).sort();
   for (var j = 0; j < catKeys.length; j++) {
-    breakdown[catKeys[j]] = categories[catKeys[j]];
+    breakdown[catKeys[j]] = Math.round(categories[catKeys[j]]);
   }
   
   return {
     success: true,
     data: {
       total: Math.round(total),
-      count: rows.length,
+      count: Object.keys(categories).length,
       breakdown: breakdown
     }
   };
