@@ -2714,11 +2714,8 @@ function setButtonLoading(buttonElement, isLoading, textContent) {
 }
 
 function setupUserLayout() {
-    const roleBadge = document.getElementById("badge-role");
     const greeting = document.getElementById("sidebar-greeting");
     const dashGreeting = document.getElementById("dash-greeting");
-
-    if (roleBadge) roleBadge.innerText = state.user.role || "Guest";
 
     const userName = state.user.name || "مستخدم";
     const hour = new Date().getHours();
@@ -2728,7 +2725,7 @@ function setupUserLayout() {
     else timeGreeting = "مساء الخير";
     const greetingText = `${timeGreeting}، ${userName}`;
     if (greeting) greeting.innerText = greetingText;
-    if (dashGreeting) dashGreeting.innerText = `${userName} — ${state.user.role || 'مستخدم'}`;
+    if (dashGreeting) dashGreeting.innerText = `التقرير اللحظي للأسطول`;
 
     const navSettings = document.getElementById("nav-settings");
     if (navSettings) {
