@@ -386,7 +386,7 @@ async function callBackend(action, parameters = {}) {
         }
     }
 
-    const isWriteAction = ["createTrip", "updateTrip", "settleTripFinancials", "addExpense", "createUser", "toggleUserStatus", "updateUserRole", "deleteUser", "resetUserPassword", "createVehicle", "updateVehicle", "deleteVehicle", "createDriver", "updateDriverData", "deleteDriver", "createClient", "updateClient", "deleteClient", "addFuelBalance", "updateFuelPrice", "markNotificationRead", "markAllNotificationsRead", "deleteNotification", "addBalance", "transferBalance", "savePermissions"].includes(action);
+    const isWriteAction = ["createTrip", "updateTrip", "settleTripFinancials", "addExpense", "updateExpense", "deleteExpense", "createUser", "toggleUserStatus", "updateUserRole", "deleteUser", "resetUserPassword", "createVehicle", "updateVehicle", "deleteVehicle", "createDriver", "updateDriverData", "deleteDriver", "createClient", "updateClient", "deleteClient", "addFuelBalance", "updateFuelPrice", "markNotificationRead", "markAllNotificationsRead", "deleteNotification", "addBalance", "transferBalance", "savePermissions"].includes(action);
     if (isWriteAction) {
         body.append("Idempotency_Key", `IDMP-${Date.now()}-${Math.floor(Math.random() * 0xffffff).toString(16)}`);
         if (state.user.csrfToken) body.append("CSRF_Token", state.user.csrfToken);
