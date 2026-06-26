@@ -578,10 +578,12 @@
             <!-- ======================================== -->
             <section id="view-dashboard" class="view-section hidden space-y-5">
                 <div class="flex items-center justify-between flex-wrap gap-2">
-                    <div>
-                        <h2 id="dash-greeting" class="text-xl font-bold"></h2>
-                        <p class="text-xs text-muted mt-0.5">آخر تحديث: <span id="dash-last-update">—</span></p>
-                        <div id="dash-notification-bar" class="hidden mt-2 p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-sm text-rose-400"></div>
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-400 text-lg font-bold">ك</div>
+                        <div>
+                            <div class="text-lg font-bold tracking-wide">كيان <span class="text-amber-400">نيو</span></div>
+                            <p class="text-xs text-muted">آخر تحديث: <span id="dash-last-update">—</span></p>
+                        </div>
                     </div>
                     <div class="flex gap-2 items-center">
                         <button id="dash-btn-notifications" class="relative w-9 h-9 flex items-center justify-center rounded-xl bg-secondary hover:bg-hover transition border border-border">
@@ -593,7 +595,8 @@
                         </button>
                     </div>
                 </div>
-                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div id="dash-notification-bar" class="hidden"></div>
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                     <div class="kpi-card kpi-accent-blue cursor-pointer" id="card-active-trips">
                         <div class="flex items-start justify-between">
                             <div class="kpi-icon" style="background:rgba(14,164,233,0.1);color:#38bdf8;"><i class="fa-solid fa-truck-moving"></i></div>
@@ -630,22 +633,11 @@
                             <div class="kpi-label">الرصيد الحالي</div>
                         </div>
                     </div>
-                    <div class="kpi-card kpi-accent-green" id="card-vehicles">
-                        <div class="flex items-start justify-between">
-                            <div class="kpi-icon" style="background:rgba(245,158,11,0.1);color:#fbbf24;"><i class="fa-solid fa-truck"></i></div>
-                        </div>
-                        <div class="mt-3">
-                            <div class="kpi-value" id="stat-vehicles"><span class="text-emerald-400">0</span> / <span class="text-rose-400">0</span></div>
-                            <div class="kpi-label">متاح / في رحلة</div>
-                        </div>
-                    </div>
-                    <div class="kpi-card kpi-accent-rose" id="card-drivers">
-                        <div class="flex items-start justify-between">
-                            <div class="kpi-icon" style="background:rgba(249,115,22,0.1);color:#fb923c;"><i class="fa-solid fa-user-tie"></i></div>
-                        </div>
-                        <div class="mt-3">
-                            <div class="kpi-value" id="stat-drivers"><span class="text-emerald-400">0</span> / <span class="text-rose-400">0</span></div>
-                            <div class="kpi-label">متاح / في رحلة</div>
+                    <div class="card p-5 rounded-2xl flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 text-xl"><i class="fa-solid fa-user"></i></div>
+                        <div>
+                            <h2 id="dash-greeting" class="text-xl font-bold"></h2>
+                            <p class="text-xs text-muted mt-0.5" id="dash-user-role"></p>
                         </div>
                     </div>
                 </div>
@@ -737,10 +729,10 @@
                             <h3 class="text-base font-bold"><i class="fa-solid fa-list-check text-amber-500 ml-2"></i>الرحلات الحالية</h3>
                             <button id="btn-refresh-trips" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
                         </div>
-                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
+                        <div class="flex flex-col gap-6 p-4">
                             <!-- الرحلات المفتوحة -->
                             <div class="overflow-x-auto">
-                                <h4 class="text-sm font-bold mb-3 text-sky-400"><i class="fa-solid fa-door-open ml-1"></i>الرحلات المفتوحة</h4>
+                                <h4 class="text-sm font-bold mb-3 text-emerald-400"><i class="fa-solid fa-door-open ml-1"></i>الرحلات المفتوحة</h4>
                                 <table class="w-full text-right border-collapse text-sm">
                                     <thead class="bg-secondary/60 text-muted border-b border-border text-xs">
                                         <tr>
@@ -761,7 +753,7 @@
                             </div>
                             <!-- الرحلات المغلقة -->
                             <div class="overflow-x-auto">
-                                <h4 class="text-sm font-bold mb-3 text-emerald-400"><i class="fa-solid fa-door-closed ml-1"></i>الرحلات المغلقة</h4>
+                                <h4 class="text-sm font-bold mb-3 text-rose-400"><i class="fa-solid fa-door-closed ml-1"></i>الرحلات المغلقة</h4>
                                 <table class="w-full text-right border-collapse text-sm">
                                     <thead class="bg-secondary/60 text-muted border-b border-border text-xs">
                                         <tr>
@@ -801,10 +793,10 @@
                         </button>
                     </div>
                 </div>
-                <div class="grid grid-cols-1 gap-3">
-                    <div class="kpi-card kpi-accent-rose">
-                        <div class="kpi-value" id="expenses-month-total">0 ج.م</div>
-                        <div class="kpi-label">إجمالي الشهر</div>
+                <div class="grid grid-cols-1 gap-2">
+                    <div class="kpi-card kpi-accent-rose" style="padding: 8px 16px !important;">
+                        <div class="kpi-value text-lg" id="expenses-month-total">0 ج.م</div>
+                        <div class="kpi-label text-xs">إجمالي الشهر</div>
                     </div>
                 </div>
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
@@ -918,11 +910,11 @@
                     </div>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="card p-6 rounded-2xl text-center">
+                    <div class="card p-6 rounded-2xl text-center border-r-4 border-emerald-500">
                         <p class="text-sm text-muted">الرصيد الحالي</p>
                         <h3 id="fuel-current-balance" class="text-3xl font-bold mt-2">0 ج.م</h3>
                     </div>
-                    <div class="card p-6 rounded-2xl text-center">
+                    <div class="card p-6 rounded-2xl text-center border-r-4 border-amber-500">
                         <p class="text-sm text-muted">عدد اللترات</p>
                         <h3 id="fuel-total-liters" class="text-3xl font-bold mt-2">0 لتر</h3>
                     </div>
@@ -1179,9 +1171,6 @@
                             <select id="report-type" class="w-full px-3 py-2 rounded-xl text-sm">
                                 <option value="expenseBreakdown">تحليل المصروفات</option>
                                 <option value="fuelSummary">تقرير البنزينة</option>
-                                <option value="driverPerformance">أداء السائقين</option>
-                                <option value="clientActivity">نشاط العملاء</option>
-                                <option value="vehicleUtilization">استغلال السيارات</option>
                             </select>
                         </div>
                         <div>
@@ -1242,12 +1231,14 @@
                     </div>
                 </div>
 
-                <!-- الرسم البياني (في زيل الصفحة) -->
-                <div class="card p-5 rounded-2xl hidden" id="report-chart-container">
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-base font-bold"><i class="fa-solid fa-chart-column ml-2 text-amber-500"></i>الرسم البياني</h3>
+                <!-- الرسم البياني (مصغّر) -->
+                <div class="card p-4 rounded-2xl hidden" id="report-chart-container">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-sm font-bold"><i class="fa-solid fa-chart-column ml-2 text-amber-500"></i>الرسم البياني</h3>
                     </div>
-                    <canvas id="report-chart" height="250"></canvas>
+                    <div class="max-h-52">
+                        <canvas id="report-chart" height="180"></canvas>
+                    </div>
                 </div>
             </section>
 

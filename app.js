@@ -510,27 +510,28 @@ async function refreshDashboard() {
             document.getElementById("stat-total-expenses").innerText = monthlyTotal.toFixed(2) + " ج.م";
         }
 
-        // تحديث إحصائيات السيارات والسائقين من بيانات الرحلات
-        const trips = d.trips || [];
-        const activeTrips = trips.filter(t => t[7] === "OPEN");
-        const vehiclesInTrip = new Set(activeTrips.map(t => t[4]).filter(Boolean));
-        const driversInTrip = new Set(activeTrips.map(t => t[3]).filter(Boolean));
-
-        if (state.cache.vehicles) {
-            const total = state.cache.vehicles.length;
-            const inTrip = vehiclesInTrip.size;
-            document.getElementById("stat-vehicles").innerHTML = `<span class="text-emerald-400">${total - inTrip}</span> / <span class="text-rose-400">${inTrip}</span>`;
-        }
-        if (state.cache.drivers) {
-            const total = state.cache.drivers.length;
-            const inTrip = driversInTrip.size;
-            document.getElementById("stat-drivers").innerHTML = `<span class="text-emerald-400">${total - inTrip}</span> / <span class="text-rose-400">${inTrip}</span>`;
-        }
-
         // Vehicle expiry alerts
         const bar = document.getElementById("dash-notification-bar");
         if (bar && state.vehicleExpiryAlerts && state.vehicleExpiryAlerts.length > 0) {
-            bar.innerHTML = '<i class="fa-solid fa-triangle-exclamation ml-1"></i> ' + state.vehicleExpiryAlerts.join(' | ');
+            const expiredCount = state.vehicleExpiryAlerts.filter(a => a.includes('انتهى')).length;
+            const aboutToCount = state.vehicleExpiryAlerts.filter(a => a.includes('ينتهي')).length;
+            let msg = '';
+            if (expiredCount > 0 && aboutToCount > 0) {
+                msg = `⚠️ ${expiredCount} سيارة منتهية الترخيص، ${aboutToCount} توشك على الانتهاء`;
+            } else if (expiredCount > 0) {
+                msg = `⚠️ ${expiredCount} سيارة منتهية الترخيص`;
+            } else {
+                msg = `⚠️ ${aboutToCount} سيارة توشك على الانتهاء`;
+            }
+            bar.innerHTML = `
+                <div class="flex items-center justify-between p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl cursor-pointer hover:bg-rose-500/15 transition" onclick="switchView('view-vehicles')">
+                    <div class="flex items-center gap-2 text-sm text-rose-400">
+                        <i class="fa-solid fa-circle-exclamation"></i>
+                        <span>${msg}</span>
+                    </div>
+                    <button onclick="event.stopPropagation();this.parentElement.parentElement.classList.add('hidden')" class="text-rose-400/60 hover:text-rose-400 text-xs"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            `;
             bar.classList.remove("hidden");
         } else if (bar) {
             bar.classList.add("hidden");
@@ -1549,11 +1550,27 @@ function renderVehiclesTable(vehicles) {
 
     state.vehicleExpiryAlerts = expiryAlerts;
 
-    // Update dashboard notification bar
+    // Update dashboard vehicle alerts
     const bar = document.getElementById("dash-notification-bar");
     if (bar) {
-        if (expiryAlerts.length > 0) {
-            bar.innerHTML = '<i class="fa-solid fa-triangle-exclamation ml-1"></i> ' + expiryAlerts.join(' | ');
+        if (expiredCount > 0 || aboutToExpireCount > 0) {
+            let msg = '';
+            if (expiredCount > 0 && aboutToExpireCount > 0) {
+                msg = `⚠️ ${expiredCount} سيارة منتهية الترخيص، ${aboutToExpireCount} توشك على الانتهاء`;
+            } else if (expiredCount > 0) {
+                msg = `⚠️ ${expiredCount} سيارة منتهية الترخيص`;
+            } else {
+                msg = `⚠️ ${aboutToExpireCount} سيارة توشك على الانتهاء`;
+            }
+            bar.innerHTML = `
+                <div class="flex items-center justify-between p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl cursor-pointer hover:bg-rose-500/15 transition" onclick="switchView('view-vehicles')">
+                    <div class="flex items-center gap-2 text-sm text-rose-400">
+                        <i class="fa-solid fa-circle-exclamation"></i>
+                        <span>${msg}</span>
+                    </div>
+                    <button onclick="event.stopPropagation();this.parentElement.parentElement.classList.add('hidden')" class="text-rose-400/60 hover:text-rose-400 text-xs"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            `;
             bar.classList.remove("hidden");
         } else {
             bar.classList.add("hidden");
@@ -2881,6 +2898,7 @@ function setButtonLoading(buttonElement, isLoading, textContent) {
 function setupUserLayout() {
     const greeting = document.getElementById("sidebar-greeting");
     const dashGreeting = document.getElementById("dash-greeting");
+    const dashRole = document.getElementById("dash-user-role");
 
     const userName = state.user.name || "مستخدم";
     const hour = new Date().getHours();
@@ -2890,7 +2908,8 @@ function setupUserLayout() {
     else timeGreeting = "مساء الخير";
     const greetingText = `${timeGreeting}، ${userName}`;
     if (greeting) greeting.innerText = greetingText;
-    if (dashGreeting) dashGreeting.innerText = `التقرير اللحظي للأسطول`;
+    if (dashGreeting) dashGreeting.innerText = greetingText;
+    if (dashRole) dashRole.innerText = state.user.role || "";
 
     const navSettings = document.getElementById("nav-settings");
     if (navSettings) {
@@ -3037,10 +3056,7 @@ async function generateReport() {
         
         const actionMap = {
             expenseBreakdown: "getExpenseBreakdown",
-            fuelSummary: "getFuelSummary",
-            driverPerformance: "getDriverPerformance",
-            clientActivity: "getClientActivity",
-            vehicleUtilization: "getVehicleUtilization"
+            fuelSummary: "getFuelSummary"
         };
         
         const action = actionMap[type];
@@ -3071,8 +3087,8 @@ function renderReportSummary(type, data) {
     const container = document.getElementById("report-summary");
     if (!container) return;
     
-    let labels = ["الإيرادات", "المصروفات", "صافي الربح", "الهامش"];
-    let values = ["0 ج.م", "0 ج.م", "0 ج.م", "0%"];
+    let labels = ["", "", "", ""];
+    let values = ["", "", "", ""];
     
     if (data.summary) {
         const s = data.summary;
@@ -3084,33 +3100,9 @@ function renderReportSummary(type, data) {
                 (s.transactions || 0).toLocaleString(),
                 (s.avgPrice || 0).toFixed(2) + " ج.م/لتر"
             ];
-        } else if (type === "driverPerformance") {
-            labels = ["إجمالي الإيرادات", "عدد الرحلات", "عدد السائقين", "متوسط الرحلة"];
-            values = [
-                (s.totalRevenue || 0).toLocaleString() + " ج.م",
-                (s.totalTrips || 0).toLocaleString(),
-                (s.driverCount || 0).toLocaleString(),
-                s.totalTrips > 0 ? Math.round(s.totalRevenue / s.totalTrips).toLocaleString() + " ج.م" : "0 ج.م"
-            ];
-        } else if (type === "clientActivity") {
-            labels = ["إجمالي الإيرادات", "عدد الرحلات", "عدد العملاء", "متوسط الرحلة"];
-            values = [
-                (s.totalRevenue || 0).toLocaleString() + " ج.م",
-                (s.totalTrips || 0).toLocaleString(),
-                (s.clientCount || 0).toLocaleString(),
-                s.totalTrips > 0 ? Math.round(s.totalRevenue / s.totalTrips).toLocaleString() + " ج.م" : "0 ج.م"
-            ];
         } else if (type === "expenseBreakdown") {
             labels = ["إجمالي المصروفات", "عدد المعاملات", "", ""];
             values = [(data.total || 0).toLocaleString() + " ج.م", (data.count || 0).toLocaleString(), "", ""];
-        } else if (type === "vehicleUtilization") {
-            labels = ["إجمالي الإيرادات", "عدد الرحلات", "عدد السيارات", ""];
-            values = [
-                (s.totalTrips ? data.breakdown.reduce((a,b) => a + (b.revenue||0), 0) : 0).toLocaleString() + " ج.م",
-                (s.totalTrips || 0).toLocaleString(),
-                (data.totalVehicles || 0).toLocaleString(),
-                ""
-            ];
         }
     }
     
@@ -3156,30 +3148,6 @@ function renderReportChart(type, data) {
             label: "تكلفة الوقود (ج.م)",
             data: data.chart.values || [],
             backgroundColor: "#3b82f6",
-            borderRadius: 6
-        }];
-    } else if (type === "driverPerformance" && data.chart) {
-        labels = data.chart.labels || [];
-        datasets = [{
-            label: "الإيرادات (ج.م)",
-            data: data.chart.values || [],
-            backgroundColor: "#22c55e",
-            borderRadius: 6
-        }];
-    } else if (type === "clientActivity" && data.chart) {
-        labels = data.chart.labels || [];
-        datasets = [{
-            label: "الإيرادات (ج.م)",
-            data: data.chart.values || [],
-            backgroundColor: "#8b5cf6",
-            borderRadius: 6
-        }];
-    } else if (type === "vehicleUtilization" && data.chart) {
-        labels = data.chart.labels || [];
-        datasets = [{
-            label: "الإيرادات (ج.م)",
-            data: data.chart.values || [],
-            backgroundColor: "#f59e0b",
             borderRadius: 6
         }];
     }
@@ -3244,43 +3212,7 @@ function renderReportTable(type, data) {
             html += `<tr><td class="p-4" data-label="السيارة">${esc(r.vehicle)}</td><td class="p-4 font-mono" data-label="اللترات">${r.liters.toLocaleString()}</td><td class="p-4 font-mono" data-label="التكلفة">${r.cost.toLocaleString()} ج.م</td><td class="p-4" data-label="العمليات">${r.count}</td><td class="p-4 font-mono" data-label="متوسط السعر">${r.avgPrice} ج.م</td></tr>`;
         });
         tbody.innerHTML = html;
-        
-    } else if (type === "driverPerformance" && data.breakdown) {
-        title.textContent = "أداء السائقين";
-        thead.innerHTML = '<tr><th class="p-4">السائق</th><th class="p-4">الرحلات</th><th class="p-4">المغلقة</th><th class="p-4">الإيرادات</th><th class="p-4">متوسط الرحلة</th><th class="p-4">السلفة</th></tr>';
-        const rows = data.breakdown;
-        if (rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center text-muted">لا توجد بيانات</td></tr>';
-            return;
-        }
-        let html = "";
-        rows.forEach(r => {
-            html += `<tr><td class="p-4" data-label="السائق">${esc(r.driverName)}</td><td class="p-4" data-label="الرحلات">${r.trips}</td><td class="p-4" data-label="المغلقة">${r.closedTrips}</td><td class="p-4 font-mono" data-label="الإيرادات">${r.revenue.toLocaleString()} ج.م</td><td class="p-4 font-mono" data-label="متوسط الرحلة">${r.avgPerTrip.toLocaleString()} ج.م</td><td class="p-4 font-mono" data-label="السلفة">${r.currentAdvance.toLocaleString()} ج.م</td></tr>`;
-        });
-        tbody.innerHTML = html;
-        
-    } else if (type === "clientActivity" && data.breakdown) {
-        title.textContent = "نشاط العملاء";
-        thead.innerHTML = '<tr><th class="p-4">العميل</th><th class="p-4">الرحلات</th><th class="p-4">المغلقة</th><th class="p-4">الإيرادات</th><th class="p-4">متوسط الرحلة</th></tr>';
-        const rows = data.breakdown;
-        if (rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-muted">لا توجد بيانات</td></tr>';
-            return;
-        }
-        let html = "";
-        rows.forEach(r => {
-            html += `<tr><td class="p-4" data-label="العميل">${esc(r.clientName)}</td><td class="p-4" data-label="الرحلات">${r.trips}</td><td class="p-4" data-label="المغلقة">${r.closedTrips}</td><td class="p-4 font-mono" data-label="الإيرادات">${r.revenue.toLocaleString()} ج.م</td><td class="p-4 font-mono" data-label="متوسط الرحلة">${r.avgPerTrip.toLocaleString()} ج.م</td></tr>`;
-        });
-        tbody.innerHTML = html;
-        
-    } else if (type === "vehicleUtilization" && data.breakdown) {
-        title.textContent = "استغلال السيارات";
-        thead.innerHTML = '<tr><th class="p-4">السيارة</th><th class="p-4">الرحلات</th><th class="p-4">المغلقة</th><th class="p-4">الإيرادات</th><th class="p-4">تكلفة الوقود</th><th class="p-4">صافي الربح</th><th class="p-4">متوسط الرحلة</th></tr>';
-        const rows = data.breakdown;
-        if (rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-muted">لا توجد بيانات</td></tr>';
-            return;
-        }
+    }
         let html = "";
         rows.forEach(r => {
             const netClass = r.net >= 0 ? "text-green-400" : "text-rose-400";
