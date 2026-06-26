@@ -147,7 +147,7 @@ function bindUIEvents() {
     document.getElementById("btn-update-fuel-price")?.addEventListener("click", handleUpdateFuelPrice);
     document.getElementById("btn-refresh-fuel-data")?.addEventListener("click", loadFuelData);
 
-    // العهدات
+    // العهدة
     document.getElementById("btn-add-balance")?.addEventListener("click", handleAddBalance);
     document.getElementById("btn-transfer-balance")?.addEventListener("click", handleTransferBalance);
     document.getElementById("balance-filter-user")?.addEventListener("change", loadBalanceData);
@@ -525,6 +525,15 @@ async function refreshDashboard() {
             const total = state.cache.drivers.length;
             const inTrip = driversInTrip.size;
             document.getElementById("stat-drivers").innerHTML = `<span class="text-emerald-400">${total - inTrip}</span> / <span class="text-rose-400">${inTrip}</span>`;
+        }
+
+        // Vehicle expiry alerts
+        const bar = document.getElementById("dash-notification-bar");
+        if (bar && state.vehicleExpiryAlerts && state.vehicleExpiryAlerts.length > 0) {
+            bar.innerHTML = '<i class="fa-solid fa-triangle-exclamation ml-1"></i> ' + state.vehicleExpiryAlerts.join(' | ');
+            bar.classList.remove("hidden");
+        } else if (bar) {
+            bar.classList.add("hidden");
         }
 
         // التشارتات + تحليل الجاز
@@ -1461,14 +1470,14 @@ async function loadVehiclesData(forceRefresh = false) {
         return;
     }
 
-    tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
 
     try {
         const response = await callBackend("getVehicles");
         state.cache.vehicles = response.data || [];
         renderVehiclesTable(state.cache.vehicles);
     } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-rose-500">فشل جلب البيانات</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-rose-500">فشل جلب البيانات</td></tr>`;
         console.error("loadVehiclesData Error:", err);
     }
 }
@@ -1477,34 +1486,96 @@ function renderVehiclesTable(vehicles) {
     const tbody = document.getElementById("table-vehicles-body");
     if (!tbody) return;
 
-    const fragment = document.createDocumentFragment();
-
     if (!vehicles || vehicles.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-muted">لا توجد عربيات</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-muted">لا توجد سيارات</td></tr>`;
         return;
     }
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    let expiredCount = 0, aboutToExpireCount = 0, validCount = 0;
+    const fragment = document.createDocumentFragment();
+    const expiryAlerts = [];
 
     vehicles.forEach(v => {
         const row = document.createElement("tr");
         row.className = "table-row hover:bg-hover transition";
-        const isExpired = v.license_expiry && new Date(v.license_expiry) < new Date();
+
+        let expiryLabel = v.license_expiry || '--';
+        let expiryClass = 'text-muted';
+        let badgeHtml = '';
+
+        if (v.license_expiry) {
+            const expDate = new Date(v.license_expiry);
+            expDate.setHours(0, 0, 0, 0);
+            const diffDays = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));
+            expiryLabel = formatDateDDMMYYYY(v.license_expiry);
+
+            if (diffDays < 0) {
+                expiryClass = 'text-rose-400 font-bold';
+                badgeHtml = '<span class="mr-1 text-rose-400"><i class="fa-solid fa-circle-exclamation"></i></span>';
+                expiredCount++;
+                if (v.plate_number) expiryAlerts.push(`🚗 ${v.plate_number}: انتهى الترخيص منذ ${Math.abs(diffDays)} يوم`);
+            } else if (diffDays <= 15) {
+                expiryClass = 'text-amber-400 font-bold';
+                badgeHtml = '<span class="mr-1 text-amber-400"><i class="fa-solid fa-triangle-exclamation"></i></span>';
+                aboutToExpireCount++;
+                if (v.plate_number) expiryAlerts.push(`🚗 ${v.plate_number}: ينتهي الترخيص بعد ${diffDays} يوم`);
+            } else {
+                expiryClass = 'text-emerald-400';
+                validCount++;
+            }
+        } else {
+            validCount++;
+        }
+
         const actionBtns = `
             <button onclick="editVehicle('${v.vehicle_id}')" class="px-2 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition"><i class="fa-solid fa-pen ml-1"></i> تعديل</button>
             <button onclick="deleteVehicle('${v.vehicle_id}')" class="px-2 py-1 text-xs bg-rose-500/20 text-rose-400 rounded-lg hover:bg-rose-500/30 transition"><i class="fa-solid fa-trash ml-1"></i> حذف</button>
         `;
         row.innerHTML = `
-            <td class="p-4 text-xs font-mono" data-label="الرقم">${v.vehicle_id}</td>
             <td class="p-4 font-medium" data-label="اللوحة">${v.plate_number}</td>
             <td class="p-4 text-xs" data-label="الموديل">${v.model}</td>
             <td class="p-4 text-xs" data-label="النوع">${v.type || '--'}</td>
-            <td class="p-4 text-xs ${isExpired ? 'text-rose-400' : 'text-emerald-400'}" data-label="الرخصة">${v.license_expiry || '--'}</td>
+            <td class="p-4 text-xs ${expiryClass}" data-label="موعد انتهاء الترخيص">${badgeHtml}${expiryLabel}</td>
             <td class="p-4 text-center" data-label="">${actionBtns}</td>
         `;
         fragment.appendChild(row);
     });
 
+    document.getElementById("vehicles-expired").innerText = expiredCount;
+    document.getElementById("vehicles-about-to-expire").innerText = aboutToExpireCount;
+    document.getElementById("vehicles-valid").innerText = validCount;
+
+    state.vehicleExpiryAlerts = expiryAlerts;
+
+    // Update dashboard notification bar
+    const bar = document.getElementById("dash-notification-bar");
+    if (bar) {
+        if (expiryAlerts.length > 0) {
+            bar.innerHTML = '<i class="fa-solid fa-triangle-exclamation ml-1"></i> ' + expiryAlerts.join(' | ');
+            bar.classList.remove("hidden");
+        } else {
+            bar.classList.add("hidden");
+        }
+    }
+
     tbody.innerHTML = "";
     tbody.appendChild(fragment);
+}
+
+function formatDateDDMMYYYY(dateStr) {
+    if (!dateStr) return '--';
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr;
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        return `${dd}-${mm}-${yyyy}`;
+    } catch (e) {
+        return dateStr;
+    }
 }
 
 async function handleAddVehicle() {
@@ -1807,7 +1878,7 @@ function renderClientsTable(clients) {
     const fragment = document.createDocumentFragment();
 
     if (!clients || clients.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-muted">لا يوجد عملاء</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-muted">لا يوجد عملاء</td></tr>`;
         return;
     }
 
@@ -1818,10 +1889,15 @@ function renderClientsTable(clients) {
             <button onclick="editClient('${c.client_id}')" class="px-2 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition"><i class="fa-solid fa-pen ml-1"></i> تعديل</button>
             <button onclick="deleteClient('${c.client_id}')" class="px-2 py-1 text-xs bg-rose-500/20 text-rose-400 rounded-lg hover:bg-rose-500/30 transition"><i class="fa-solid fa-trash ml-1"></i> حذف</button>
         `;
+        const locUrl = c.location_url || c.location || '';
+        const locHtml = locUrl
+            ? `<a href="${locUrl}" target="_blank" class="text-amber-400 hover:text-amber-300 transition text-xs"><i class="fa-solid fa-map-location-dot ml-1"></i>فتح الخريطة</a>`
+            : '<span class="text-muted text-xs">--</span>';
         row.innerHTML = `
             <td class="p-4 font-medium" data-label="الاسم">${c.client_name}</td>
             <td class="p-4 text-xs" data-label="التليفون">${c.phone || '--'}</td>
             <td class="p-4 text-xs" data-label="العنوان">${c.address || '--'}</td>
+            <td class="p-4 text-xs" data-label="موقع العميل">${locHtml}</td>
             <td class="p-4 text-center" data-label="">${actionBtns}</td>
         `;
         fragment.appendChild(row);
@@ -1846,6 +1922,8 @@ async function handleAddClient() {
                 <input id="client-tax" class="swal2-input w-full" placeholder="الرقم الضريبي">
                 <label class="block text-sm font-medium mb-1 mt-3">السجل التجاري</label>
                 <input id="client-commercial" class="swal2-input w-full" placeholder="السجل التجاري">
+                <label class="block text-sm font-medium mb-1 mt-3">موقع العميل (رابط خرائط)</label>
+                <input id="client-location" class="swal2-input w-full" placeholder="https://maps.google.com/...">
             </div>
         `,
         focusConfirm: false,
@@ -1858,7 +1936,8 @@ async function handleAddClient() {
                 Phone: document.getElementById('client-phone').value,
                 Address: document.getElementById('client-address').value,
                 Tax_Number: document.getElementById('client-tax').value,
-                Commercial_Record: document.getElementById('client-commercial').value
+                Commercial_Record: document.getElementById('client-commercial').value,
+                Location_URL: document.getElementById('client-location').value
             };
         }
     });
@@ -1888,6 +1967,8 @@ window.editClient = async function(clientId) {
                 <input id="edit-client-phone" class="swal2-input w-full" value="${client.phone || ''}">
                 <label class="block text-sm font-medium mb-1 mt-3">العنوان</label>
                 <input id="edit-client-address" class="swal2-input w-full" value="${client.address || ''}">
+                <label class="block text-sm font-medium mb-1 mt-3">موقع العميل (رابط خرائط)</label>
+                <input id="edit-client-location" class="swal2-input w-full" value="${client.location_url || client.location || ''}">
             </div>
         `,
         focusConfirm: false,
@@ -1899,7 +1980,8 @@ window.editClient = async function(clientId) {
                 Client_ID: clientId,
                 Client_Name: document.getElementById('edit-client-name').value,
                 Phone: document.getElementById('edit-client-phone').value,
-                Address: document.getElementById('edit-client-address').value
+                Address: document.getElementById('edit-client-address').value,
+                Location_URL: document.getElementById('edit-client-location').value
             };
         }
     });
@@ -1935,7 +2017,7 @@ window.deleteClient = async function(clientId) {
     }
 };
 
-// ─── 5️⃣-ك: العهدات ───
+// ─── 5️⃣-ك: العهدة ───
 async function loadBalanceData(forceRefresh = false) {
     const tbody = document.getElementById("table-balance-body");
     if (!tbody) return;
@@ -2036,16 +2118,19 @@ function renderBalanceTable(transactions) {
 
     transactions.forEach(t => {
         const row = document.createElement("tr");
-        row.className = "table-row hover:bg-hover transition";
+        row.className = "table-row hover:bg-hover transition cursor-pointer";
         const isPositive = t.amount > 0;
+        const userName = lookupUserName(t.user_id) || t.user_id || '--';
+        const tripInfo = t.related_type === 'TRIP' || t.trip_id ? `الرحلة: ${t.trip_id || t.related_id || '--'}` : '';
         row.innerHTML = `
             <td class="p-4 text-xs" data-label="التاريخ">${t.created_at ? new Date(t.created_at).toLocaleString('ar-EG') : ''}</td>
-            <td class="p-4 text-xs font-mono" data-label="المستخدم">${t.user_id || '--'}</td>
+            <td class="p-4 text-xs" data-label="المستخدم">${userName}</td>
             <td class="p-4 text-xs" data-label="النوع">${typeMap[t.transaction_type] || t.transaction_type}</td>
             <td class="p-4 text-xs ${isPositive ? 'text-emerald-400' : 'text-rose-400'}" data-label="المبلغ">${t.amount || 0}</td>
             <td class="p-4 text-xs" data-label="الرصيد بعد">${t.balance_after || 0}</td>
             <td class="p-4 text-xs text-muted" data-label="ملاحظات">${t.notes || ''}</td>
         `;
+        row.addEventListener("click", () => showTransactionDetails(t));
         fragment.appendChild(row);
     });
 
@@ -2053,7 +2138,63 @@ function renderBalanceTable(transactions) {
     tbody.appendChild(fragment);
 }
 
+function showTransactionDetails(t) {
+    const typeMap = {
+        'ADD': 'إيداع',
+        'DEDUCT': 'صرف',
+        'TRANSFER_IN': 'تحويل وارد',
+        'TRANSFER_OUT': 'تحويل صادر',
+        'EXPENSE': 'مصروف'
+    };
+    const userName = lookupUserName(t.user_id) || t.user_id || '--';
+    const isTripRelated = t.related_type === 'TRIP' || t.trip_id;
+    let tripHtml = '';
+    if (isTripRelated) {
+        const tripId = t.trip_id || t.related_id || '--';
+        const trip = (state.cache.trips || []).find(tr => tr[0] === tripId);
+        if (trip) {
+            tripHtml = `
+                <div class="mt-3 p-3 bg-amber-500/10 rounded-xl border border-amber-500/20">
+                    <h4 class="font-bold text-sm mb-2"><i class="fa-solid fa-truck ml-1"></i>تفاصيل الرحلة</h4>
+                    <p class="text-xs">🚀 الرحلة: ${trip[0]}</p>
+                    <p class="text-xs">👤 العميل: ${lookupClientName(trip[2]) || trip[2]}</p>
+                    <p class="text-xs">🚗 السيارة: ${lookupVehicleLabel(trip[4]) || trip[4]}</p>
+                    <p class="text-xs">👨‍✈️ السائق: ${lookupDriverName(trip[3]) || trip[3]}</p>
+                    <p class="text-xs">📍 الوجهة: ${trip[5] || ''}</p>
+                    <p class="text-xs">📌 الحالة: ${trip[7] || ''}</p>
+                </div>
+            `;
+        } else {
+            tripHtml = `<div class="mt-3 p-3 bg-amber-500/10 rounded-xl border border-amber-500/20"><p class="text-xs">🔗 معرف الرحلة: ${tripId}</p></div>`;
+        }
+    }
+    Swal.fire({
+        title: 'تفاصيل الحركة',
+        html: `
+            <div class="text-right text-sm space-y-2">
+                <p><span class="text-muted">التاريخ:</span> ${t.created_at ? new Date(t.created_at).toLocaleString('ar-EG') : '--'}</p>
+                <p><span class="text-muted">المستخدم:</span> ${userName}</p>
+                <p><span class="text-muted">النوع:</span> ${typeMap[t.transaction_type] || t.transaction_type}</p>
+                <p><span class="text-muted">المبلغ:</span> <span class="${t.amount > 0 ? 'text-emerald-400' : 'text-rose-400'}">${t.amount || 0}</span></p>
+                <p><span class="text-muted">الرصيد بعد:</span> ${t.balance_after || 0}</p>
+                <p><span class="text-muted">ملاحظات:</span> ${t.notes || '--'}</p>
+                ${t.source ? `<p><span class="text-muted">المصدر:</span> ${t.source}</p>` : ''}
+                ${t.destination ? `<p><span class="text-muted">المستلم:</span> ${lookupUserName(t.destination) || t.destination}</p>` : ''}
+                ${t.reference ? `<p><span class="text-muted">مرجع:</span> ${t.reference}</p>` : ''}
+                ${tripHtml}
+            </div>
+        `,
+        confirmButtonText: 'حسناً',
+        confirmButtonColor: '#f59e0b'
+    });
+}
+
 async function handleAddBalance() {
+    // Check if user has balance to deposit
+    if (!state.myBalance || state.myBalance <= 0) {
+        Swal.fire({ icon: 'warning', title: 'رصيدك صفر', text: 'لا يمكنك الإيداع لأن رصيدك الحالي صفر.', confirmButtonColor: '#f59e0b' });
+        return;
+    }
     const { value: formValues } = await Swal.fire({
         title: 'إيداع عهدة',
         html: `
@@ -2116,6 +2257,11 @@ async function handleAddBalance() {
 }
 
 async function handleTransferBalance() {
+    // Check if user has balance to transfer
+    if (!state.myBalance || state.myBalance <= 0) {
+        Swal.fire({ icon: 'warning', title: 'رصيدك صفر', text: 'لا يمكنك التحويل لأن رصيدك الحالي صفر.', confirmButtonColor: '#f59e0b' });
+        return;
+    }
     const { value: formValues } = await Swal.fire({
         title: 'تحويل عهدة',
         html: `
@@ -2541,7 +2687,7 @@ function renderPermissionsMatrix(container, data) {
         'البنزينة': ['getFuelBalance', 'addFuelBalance', 'getFuelTransactions', 'getFuelAnalytics', 'updateFuelPrice'],
         'التنبيهات': ['getNotifications', 'markNotificationRead', 'markAllNotificationsRead', 'deleteNotification'],
         'الصيانة': ['getMaintenance', 'getVehicleMaintenance', 'getTripMaintenance', 'updateMaintenance', 'deleteMaintenance'],
-        'العهدات': ['getMyBalance', 'getUserBalance', 'getMyTransactions', 'getAllTransactions', 'addBalance', 'deductBalance', 'transferBalance'],
+        'العهدة': ['getMyBalance', 'getUserBalance', 'getMyTransactions', 'getAllTransactions', 'addBalance', 'deductBalance', 'transferBalance'],
         'أخرى': ['getDashboard', 'getLookups', 'logout', 'viewAuditLog']
     };
 

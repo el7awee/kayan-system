@@ -18,6 +18,7 @@ function clientService_createClient(ss, params, userId) {
   let address = params.Address?.trim() || "";
   let taxNumber = params.Tax_Number?.trim() || "";
   let commercialRecord = params.Commercial_Record?.trim() || "";
+  let locationUrl = params.Location_URL?.trim() || "";
   
   // التحقق من المدخلات (الاسم والرقم فقط إجبارية)
   if (!clientName || !phone) {
@@ -46,7 +47,8 @@ function clientService_createClient(ss, params, userId) {
     commercialRecord,   // F: Commercial_Record
     userId,             // G: Created_By
     now,                // H: Created_At
-    false               // I: IsDeleted
+    false,              // I: IsDeleted
+    locationUrl         // J: Location_URL
   ]);
   
   logApiAudit(userId, "Admin", "createClient", 0, "N/A", 200);
@@ -83,7 +85,8 @@ function clientService_getClients(ss) {
       tax_number: data[i][4],
       commercial_record: data[i][5],
       created_by: data[i][6],
-      created_at: data[i][7]
+      created_at: data[i][7],
+      location_url: data[i][9] || ""
     });
   }
   
@@ -114,6 +117,7 @@ function clientService_updateClient(ss, params, userId) {
       if (params.Address) sheet.getRange(i + 1, 4).setValue(params.Address.trim());
       if (params.Tax_Number) sheet.getRange(i + 1, 5).setValue(params.Tax_Number.trim());
       if (params.Commercial_Record) sheet.getRange(i + 1, 6).setValue(params.Commercial_Record.trim());
+      if (params.Location_URL !== undefined) sheet.getRange(i + 1, 10).setValue(params.Location_URL.trim());
       
       found = true;
       break;
@@ -177,7 +181,8 @@ function clientService_getClientById(clientId) {
         client_id: data[i][0],
         client_name: data[i][1],
         phone: data[i][2],
-        address: data[i][3]
+        address: data[i][3],
+        location_url: data[i][9] || ""
       };
     }
   }

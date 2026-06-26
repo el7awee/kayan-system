@@ -545,7 +545,7 @@
                     <i class="fa-solid fa-building text-muted group-hover:text-amber-500 transition"></i> العملاء
                 </button>
                 <button id="nav-balance" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition duration-150 font-medium group">
-                    <i class="fa-solid fa-scale-balanced text-muted group-hover:text-amber-500 transition"></i> العهدات
+                    <i class="fa-solid fa-scale-balanced text-muted group-hover:text-amber-500 transition"></i> العهدة
                 </button>
                 <button id="nav-notifications" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition duration-150 font-medium group">
                     <i class="fa-solid fa-bell text-muted group-hover:text-amber-500 transition"></i> التنبيهات
@@ -581,6 +581,7 @@
                     <div>
                         <h2 id="dash-greeting" class="text-xl font-bold"></h2>
                         <p class="text-xs text-muted mt-0.5">آخر تحديث: <span id="dash-last-update">—</span></p>
+                        <div id="dash-notification-bar" class="hidden mt-2 p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-sm text-rose-400"></div>
                     </div>
                     <div class="flex gap-2 items-center">
                         <button id="dash-btn-notifications" class="relative w-9 h-9 flex items-center justify-center rounded-xl bg-secondary hover:bg-hover transition border border-border">
@@ -966,6 +967,20 @@
                         <p class="text-xs text-muted mt-1">إضافة وتعديل وحذف السيارات</p>
                     </div>
                 </div>
+                <div class="grid grid-cols-3 gap-3">
+                    <div class="card p-4 rounded-2xl text-center border-r-4 border-rose-500">
+                        <p class="text-xs text-muted">منتهية الترخيص</p>
+                        <h3 id="vehicles-expired" class="text-3xl font-bold text-rose-400 mt-1">0</h3>
+                    </div>
+                    <div class="card p-4 rounded-2xl text-center border-r-4 border-amber-500">
+                        <p class="text-xs text-muted">توشك على الانتهاء</p>
+                        <h3 id="vehicles-about-to-expire" class="text-3xl font-bold text-amber-400 mt-1">0</h3>
+                    </div>
+                    <div class="card p-4 rounded-2xl text-center border-r-4 border-emerald-500">
+                        <p class="text-xs text-muted">سارية الترخيص</p>
+                        <h3 id="vehicles-valid" class="text-3xl font-bold text-emerald-400 mt-1">0</h3>
+                    </div>
+                </div>
                 <button id="btn-add-vehicle" class="btn-gold px-6 py-2.5 rounded-xl text-sm"><i class="fa-solid fa-plus ml-1"></i> إضافة سيارة</button>
                 <div class="card rounded-2xl overflow-hidden">
                     <div class="p-5 border-b border-border bg-secondary/30 flex items-center justify-between">
@@ -976,16 +991,15 @@
                         <table class="w-full text-right border-collapse text-sm">
                             <thead class="bg-secondary/60 text-muted border-b border-border text-xs">
                                 <tr>
-                                    <th class="p-4">الرقم</th>
                                     <th class="p-4">اللوحة</th>
                                     <th class="p-4">الموديل</th>
                                     <th class="p-4">النوع</th>
-                                    <th class="p-4">الرخصة</th>
+                                    <th class="p-4">موعد انتهاء الترخيص</th>
                                     <th class="p-4 text-center">إجراءات</th>
                                 </tr>
                             </thead>
                             <tbody id="table-vehicles-body" class="divide-y divide-border">
-                                <tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
+                                <tr><td colspan="5" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1050,11 +1064,12 @@
                                     <th class="p-4">الاسم</th>
                                     <th class="p-4">التليفون</th>
                                     <th class="p-4">العنوان</th>
+                                    <th class="p-4">موقع العميل</th>
                                     <th class="p-4 text-center">إجراءات</th>
                                 </tr>
                             </thead>
                             <tbody id="table-clients-body" class="divide-y divide-border">
-                                <tr><td colspan="4" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
+                                <tr><td colspan="5" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1062,13 +1077,13 @@
             </section>
 
             <!-- ======================================== -->
-            <!-- ⚖️ شاشة العهدات (جديدة)                  -->
+            <!-- ⚖️ شاشة العهدة (جديدة)                   -->
             <!-- ======================================== -->
             <section id="view-balance" class="view-section hidden space-y-6">
                 <div class="flex items-center justify-between border-b border-border pb-4">
                     <div>
-                        <h2 class="text-2xl font-bold">إدارة العهدات</h2>
-                        <p class="text-xs text-muted mt-1">عرض وإدارة العهدات والحركات المالية</p>
+                        <h2 class="text-2xl font-bold">إدارة العهدة</h2>
+                        <p class="text-xs text-muted mt-1">عرض وإدارة العهدة والحركات المالية</p>
                     </div>
                     <div class="flex gap-2">
                         <button id="btn-add-balance" class="btn-gold px-4 py-2 rounded-xl text-sm"><i class="fa-solid fa-plus ml-1"></i> إيداع</button>
@@ -1096,7 +1111,7 @@
                 <!-- جدول الحركات -->
                 <div class="card rounded-2xl overflow-hidden">
                     <div class="p-5 border-b border-border bg-secondary/30 flex items-center justify-between">
-                        <h3 class="text-base font-bold"><i class="fa-solid fa-list-ul ml-2 text-amber-500"></i>حركات العهدات</h3>
+                        <h3 class="text-base font-bold"><i class="fa-solid fa-list-ul ml-2 text-amber-500"></i>حركات العهدة</h3>
                         <div class="flex gap-2">
                             <select id="balance-filter-user" class="text-xs bg-secondary border border-border rounded-lg px-2 py-1">
                                 <option value="">كل المستخدمين</option>
@@ -1343,7 +1358,7 @@
         </button>
         <button class="bnav-item" data-view="view-balance">
             <i class="fa-solid fa-scale-balanced"></i>
-            <span>العهدات</span>
+            <span>العهدة</span>
         </button>
         <button class="bnav-item" id="bnav-more-btn">
             <i class="fa-solid fa-ellipsis-h"></i>
