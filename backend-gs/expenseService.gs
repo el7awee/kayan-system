@@ -86,7 +86,11 @@ function uploadBase64FileToDrive(base64Data, fileName) {
     if (EXPENSES_DRIVE_FOLDER_ID === "YOUR_GOOGLE_DRIVE_FOLDER_ID_HERE") {
       folder = DriveApp.getRootFolder();
     } else {
-      folder = DriveApp.getFolderById(EXPENSES_DRIVE_FOLDER_ID);
+      try {
+        folder = DriveApp.getFolderById(EXPENSES_DRIVE_FOLDER_ID);
+      } catch (e) {
+        folder = DriveApp.getRootFolder();
+      }
     }
     
     let file = folder.createFile(blob);
