@@ -536,7 +536,7 @@
                     <i class="fa-solid fa-gas-pump text-muted group-hover:text-amber-500 transition"></i> البنزينة
                 </button>
                 <button id="nav-vehicles" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition duration-150 font-medium group">
-                    <i class="fa-solid fa-truck text-muted group-hover:text-amber-500 transition"></i> العربيات
+                    <i class="fa-solid fa-truck text-muted group-hover:text-amber-500 transition"></i> السيارات
                 </button>
                 <button id="nav-drivers" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition duration-150 font-medium group">
                     <i class="fa-solid fa-user-tie text-muted group-hover:text-amber-500 transition"></i> السائقين
@@ -659,7 +659,7 @@
                     <div class="card p-5 rounded-2xl">
                         <div class="flex items-center justify-between mb-3">
                             <h3 class="text-sm font-bold"><i class="fa-solid fa-gas-pump text-green-500 ml-2"></i>استهلاك البنزينة</h3>
-                            <span class="text-[10px] text-muted">حسب العربية</span>
+                            <span class="text-[10px] text-muted">حسب السيارة</span>
                         </div>
                         <div style="position:relative;height:200px;"><canvas id="chart-fuel"></canvas></div>
                     </div>
@@ -673,7 +673,7 @@
                         <table class="w-full text-xs" id="fuel-analytics-table">
                             <thead>
                                 <tr class="text-muted border-b border-border">
-                                    <th class="text-right py-2 px-2">العربية</th>
+                                    <th class="text-right py-2 px-2">السيارة</th>
                                     <th class="text-right py-2 px-2">لترات</th>
                                     <th class="text-right py-2 px-2">التكلفة (ج.م)</th>
                                     <th class="text-right py-2 px-2">عدد الرحلات</th>
@@ -708,9 +708,9 @@
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-xs font-medium text-muted mb-1">العربية</label>
+                                <label class="block text-xs font-medium text-muted mb-1">السيارة</label>
                                 <select id="trip-vehicle-id" required class="w-full px-3 py-2 rounded-xl text-sm">
-                                    <option value="">-- اختر العربية --</option>
+                                    <option value="">-- اختر السيارة --</option>
                                 </select>
                             </div>
                             <div>
@@ -721,15 +721,9 @@
                                 <label class="block text-xs font-medium text-muted mb-1">العهدة النقدية (ج.م)</label>
                                 <input type="number" id="trip-advance-cash" min="0" class="w-full px-3 py-2 rounded-xl text-sm font-mono" placeholder="0.00">
                             </div>
-                            <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label class="block text-xs font-medium text-muted mb-1">لترات الجاز</label>
-                                    <input type="number" id="trip-fuel-liters" required min="0" step="0.1" class="w-full px-3 py-2 rounded-xl text-sm font-mono" placeholder="0.0">
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-medium text-muted mb-1">سعر اللتر</label>
-                                    <input type="number" id="trip-fuel-price" required min="0" step="0.01" class="w-full px-3 py-2 rounded-xl text-sm font-mono" placeholder="0.00">
-                                </div>
+                            <div>
+                                <label class="block text-xs font-medium text-muted mb-1">لترات الجاز</label>
+                                <input type="number" id="trip-fuel-liters" required min="0" step="0.1" class="w-full px-3 py-2 rounded-xl text-sm font-mono" placeholder="0.0">
                             </div>
                             <button type="submit" id="btn-trip-submit" class="btn-gold w-full py-2.5 rounded-xl text-sm">
                                 <i class="fa-solid fa-paper-plane ml-1"></i> بث أمر الرحلة
@@ -742,22 +736,49 @@
                             <h3 class="text-base font-bold"><i class="fa-solid fa-list-check text-amber-500 ml-2"></i>الرحلات الحالية</h3>
                             <button id="btn-refresh-trips" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
                         </div>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-right border-collapse text-sm">
-                                <thead class="bg-secondary/60 text-muted border-b border-border text-xs">
-                                    <tr>
-                                        <th class="p-4">الرحلة</th>
-                                        <th class="p-4">السائق</th>
-                                        <th class="p-4">العربية</th>
-                                        <th class="p-4">الجاز</th>
-                                        <th class="p-4">الحالة</th>
-                                        <th class="p-4 text-center">إجراء</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="table-trips-body" class="divide-y divide-border">
-                                    <tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
-                                </tbody>
-                            </table>
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
+                            <!-- الرحلات المفتوحة -->
+                            <div class="overflow-x-auto">
+                                <h4 class="text-sm font-bold mb-3 text-sky-400"><i class="fa-solid fa-door-open ml-1"></i>الرحلات المفتوحة</h4>
+                                <table class="w-full text-right border-collapse text-sm">
+                                    <thead class="bg-secondary/60 text-muted border-b border-border text-xs">
+                                        <tr>
+                                            <th class="p-2">الرحلة</th>
+                                            <th class="p-2">العميل</th>
+                                            <th class="p-2">السائق</th>
+                                            <th class="p-2">السيارة</th>
+                                            <th class="p-2">الجاز</th>
+                                            <th class="p-2">الحالة</th>
+                                            <th class="p-2">بواسطة</th>
+                                            <th class="p-2 text-center">إجراء</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="table-trips-open" class="divide-y divide-border">
+                                        <tr><td colspan="8" class="p-4 text-center text-muted text-xs"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <!-- الرحلات المغلقة -->
+                            <div class="overflow-x-auto">
+                                <h4 class="text-sm font-bold mb-3 text-emerald-400"><i class="fa-solid fa-door-closed ml-1"></i>الرحلات المغلقة</h4>
+                                <table class="w-full text-right border-collapse text-sm">
+                                    <thead class="bg-secondary/60 text-muted border-b border-border text-xs">
+                                        <tr>
+                                            <th class="p-2">الرحلة</th>
+                                            <th class="p-2">العميل</th>
+                                            <th class="p-2">السائق</th>
+                                            <th class="p-2">السيارة</th>
+                                            <th class="p-2">الجاز</th>
+                                            <th class="p-2">الحالة</th>
+                                            <th class="p-2">بواسطة</th>
+                                            <th class="p-2 text-center">إجراء</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="table-trips-closed" class="divide-y divide-border">
+                                        <tr><td colspan="8" class="p-4 text-center text-muted text-xs"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -779,22 +800,10 @@
                         </button>
                     </div>
                 </div>
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div class="grid grid-cols-1 gap-3">
                     <div class="kpi-card kpi-accent-rose">
                         <div class="kpi-value" id="expenses-month-total">0 ج.م</div>
                         <div class="kpi-label">إجمالي الشهر</div>
-                    </div>
-                    <div class="kpi-card kpi-accent-blue">
-                        <div class="kpi-value" id="expenses-utilities-total">0 ج.م</div>
-                        <div class="kpi-label">مرافق (كهرباء + مياه + نت)</div>
-                    </div>
-                    <div class="kpi-card kpi-accent-amber">
-                        <div class="kpi-value" id="expenses-rent-total">0 ج.م</div>
-                        <div class="kpi-label">إيجار</div>
-                    </div>
-                    <div class="kpi-card kpi-accent-purple">
-                        <div class="kpi-value" id="expenses-other-total">0 ج.م</div>
-                        <div class="kpi-label">باقي المصروفات</div>
                     </div>
                 </div>
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
@@ -816,6 +825,10 @@
                                     <option value="رواتب">💰 رواتب</option>
                                     <option value="أخرى">📦 أخرى</option>
                                 </select>
+                            </div>
+                            <div id="expense-other-category-container" class="hidden">
+                                <label class="block text-xs font-medium text-muted mb-1">اكتب نوع المصروف</label>
+                                <input type="text" id="expense-other-category" class="w-full px-3 py-2 rounded-xl text-sm" placeholder="مثال: قرطاسية" autocomplete="off">
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-muted mb-1">البيان — إيه صرفت فيه؟</label>
@@ -903,18 +916,14 @@
                         <p class="text-xs text-muted mt-1">إدارة رصيد البنزينة وحركة الجاز</p>
                     </div>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="card p-6 rounded-2xl text-center">
                         <p class="text-sm text-muted">الرصيد الحالي</p>
                         <h3 id="fuel-current-balance" class="text-3xl font-bold mt-2">0 ج.م</h3>
                     </div>
                     <div class="card p-6 rounded-2xl text-center">
-                        <p class="text-sm text-muted">سعر اللتر</p>
-                        <h3 id="fuel-current-price" class="text-3xl font-bold mt-2">0.00 ج.م</h3>
-                    </div>
-                    <div class="card p-6 rounded-2xl text-center">
-                        <p class="text-sm text-muted">آخر تحديث</p>
-                        <h3 id="fuel-last-updated" class="text-lg font-bold mt-2">--</h3>
+                        <p class="text-sm text-muted">عدد اللترات</p>
+                        <h3 id="fuel-total-liters" class="text-3xl font-bold mt-2">0 لتر</h3>
                     </div>
                 </div>
                 <div class="flex gap-3 flex-wrap">
@@ -931,15 +940,16 @@
                             <thead class="bg-secondary/60 text-muted border-b border-border text-xs">
                                 <tr>
                                     <th class="p-4">التاريخ</th>
-                                    <th class="p-4">العربية</th>
+                                    <th class="p-4">السيارة</th>
                                     <th class="p-4">النوع</th>
                                     <th class="p-4">اللترات</th>
                                     <th class="p-4">القيمة</th>
                                     <th class="p-4">المصدر</th>
+                                    <th class="p-4">بواسطة</th>
                                 </tr>
                             </thead>
-                            <tbody id="table-fuel-transactions" class="divide-y divide-border">
-                                <tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
+                                <tbody id="table-fuel-transactions" class="divide-y divide-border">
+                                    <tr><td colspan="7" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -947,19 +957,19 @@
             </section>
 
             <!-- ======================================== -->
-            <!-- 🚗 شاشة العربيات (جديدة)                 -->
+            <!-- 🚗 شاشة السيارات (جديدة)                 -->
             <!-- ======================================== -->
             <section id="view-vehicles" class="view-section hidden space-y-6">
                 <div class="flex items-center justify-between border-b border-border pb-4">
                     <div>
-                        <h2 class="text-2xl font-bold">إدارة العربيات</h2>
-                        <p class="text-xs text-muted mt-1">إضافة وتعديل وحذف العربيات</p>
+                        <h2 class="text-2xl font-bold">إدارة السيارات</h2>
+                        <p class="text-xs text-muted mt-1">إضافة وتعديل وحذف السيارات</p>
                     </div>
                 </div>
-                <button id="btn-add-vehicle" class="btn-gold px-6 py-2.5 rounded-xl text-sm"><i class="fa-solid fa-plus ml-1"></i> إضافة عربية</button>
+                <button id="btn-add-vehicle" class="btn-gold px-6 py-2.5 rounded-xl text-sm"><i class="fa-solid fa-plus ml-1"></i> إضافة سيارة</button>
                 <div class="card rounded-2xl overflow-hidden">
                     <div class="p-5 border-b border-border bg-secondary/30 flex items-center justify-between">
-                        <h3 class="text-base font-bold"><i class="fa-solid fa-truck ml-2 text-amber-500"></i>قائمة العربيات</h3>
+                        <h3 class="text-base font-bold"><i class="fa-solid fa-truck ml-2 text-amber-500"></i>قائمة السيارات</h3>
                         <button id="btn-refresh-vehicles" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>
                     </div>
                     <div class="overflow-x-auto">
@@ -1152,13 +1162,11 @@
                         <div>
                             <label class="block text-xs font-medium text-muted mb-1">نوع التقرير</label>
                             <select id="report-type" class="w-full px-3 py-2 rounded-xl text-sm">
-                                <option value="profitLoss">الأرباح والخسائر (P&L)</option>
                                 <option value="expenseBreakdown">تحليل المصروفات</option>
                                 <option value="fuelSummary">تقرير البنزينة</option>
                                 <option value="driverPerformance">أداء السائقين</option>
                                 <option value="clientActivity">نشاط العملاء</option>
-                                <option value="monthlyTrends">الاتجاهات الشهرية</option>
-                                <option value="vehicleUtilization">استغلال العربيات</option>
+                                <option value="vehicleUtilization">استغلال السيارات</option>
                             </select>
                         </div>
                         <div>
@@ -1174,17 +1182,6 @@
                             <button id="btn-generate-report" class="btn-gold w-full py-2.5 rounded-xl text-sm">
                                 <i class="fa-solid fa-chart-line ml-1"></i> توليد التقرير
                             </button>
-                        </div>
-                    </div>
-                    <div class="mt-3 flex items-center gap-2">
-                        <label class="flex items-center gap-2 text-sm cursor-pointer">
-                            <input type="checkbox" id="report-year-toggle" class="rounded">
-                            <span class="text-muted">تقرير سنوي (يتجاهل التواريخ)</span>
-                        </label>
-                        <div id="report-year-selector" class="hidden flex items-center gap-2">
-                            <label class="text-xs text-muted">السنة:</label>
-                            <select id="report-year" class="px-2 py-1 rounded-lg text-sm">
-                            </select>
                         </div>
                     </div>
                 </div>
@@ -1209,15 +1206,6 @@
                     </div>
                 </div>
 
-                <!-- الرسم البياني -->
-                <div class="card p-5 rounded-2xl hidden" id="report-chart-container">
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-base font-bold"><i class="fa-solid fa-chart-column ml-2 text-amber-500"></i>الرسم البياني</h3>
-                        <button id="btn-export-report-chart" class="text-xs bg-secondary hover:bg-hover px-3 py-1.5 rounded-lg transition hidden"><i class="fa-solid fa-image ml-1"></i> تصدير</button>
-                    </div>
-                    <canvas id="report-chart" height="250"></canvas>
-                </div>
-
                 <!-- جدول التقرير -->
                 <div class="card rounded-2xl overflow-hidden">
                     <div class="p-5 border-b border-border bg-secondary/30 flex items-center justify-between">
@@ -1237,6 +1225,14 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+
+                <!-- الرسم البياني (في زيل الصفحة) -->
+                <div class="card p-5 rounded-2xl hidden" id="report-chart-container">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-base font-bold"><i class="fa-solid fa-chart-column ml-2 text-amber-500"></i>الرسم البياني</h3>
+                    </div>
+                    <canvas id="report-chart" height="250"></canvas>
                 </div>
             </section>
 
@@ -1364,7 +1360,7 @@
                 <i class="fa-solid fa-gas-pump"></i> البنزينة
             </button>
             <button class="ms-item" data-view="view-vehicles">
-                <i class="fa-solid fa-truck"></i> العربيات
+                <i class="fa-solid fa-truck"></i> السيارات
             </button>
             <button class="ms-item" data-view="view-drivers">
                 <i class="fa-solid fa-user-tie"></i> السائقين

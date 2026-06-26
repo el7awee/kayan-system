@@ -87,10 +87,11 @@ function fuelService_addBalance(ss, params, userId) {
   
   // تسجيل حركة الجاز
   let fuelPrice = getFuelPrice();
+  let amountLiters = fuelPrice > 0 ? (amount / fuelPrice) : 0;
   logFuelTransaction({
     vehicleId: "",
     tripId: "",
-    amountLiters: 0,
+    amountLiters: amountLiters,
     amountEGP: amount,
     fuelPrice: fuelPrice,
     transactionType: 'ADD',

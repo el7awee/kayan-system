@@ -311,7 +311,7 @@ function reportService_getClientActivity(params) {
   
   for (var i = 0; i < tripsRows.length; i++) {
     if (tripsRows[i][13] === true || tripsRows[i][13] === "TRUE") continue;
-    var clientId = (tripsRows[i][5] || "غير معروف").toString(); // col[5] = client_id
+    var clientId = (tripsRows[i][2] || "غير معروف").toString(); // col[2] = customerID
     var rev = parseFloat(tripsRows[i][9]) || 0;
     var status = (tripsRows[i][7] || "").toString();
     

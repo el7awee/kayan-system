@@ -180,6 +180,10 @@ function bindUIEvents() {
     document.getElementById("form-add-expense")?.addEventListener("submit", handleAddExpenseSubmit);
     document.getElementById("btn-expense-cancel-edit")?.addEventListener("click", cancelEditExpense);
     document.getElementById("expense-file-input")?.addEventListener("change", handleFileProcessing);
+    document.getElementById("expense-category")?.addEventListener("change", function() {
+        const container = document.getElementById("expense-other-category-container");
+        if (container) container.classList.toggle("hidden", this.value !== "أخرى");
+    });
     document.getElementById("expense-search")?.addEventListener("input", () => { expensesState.page = 1; renderExpensesTable(); });
     document.getElementById("expense-filter-from")?.addEventListener("change", () => { expensesState.page = 1; renderExpensesTable(); });
     document.getElementById("expense-filter-to")?.addEventListener("change", () => { expensesState.page = 1; renderExpensesTable(); });
@@ -200,17 +204,6 @@ function bindUIEvents() {
 
     // 📊 التقارير
     document.getElementById("btn-generate-report")?.addEventListener("click", generateReport);
-    document.getElementById("report-type")?.addEventListener("change", () => {
-        const isMonthly = document.getElementById("report-type")?.value === "monthlyTrends";
-        const ryt = document.getElementById("report-year-toggle");
-        if (ryt) ryt.checked = false;
-        if (isMonthly) document.getElementById("report-year-selector")?.classList.remove("hidden");
-    });
-    document.getElementById("report-year-toggle")?.addEventListener("change", function () {
-        const sel = document.getElementById("report-year-selector");
-        if (sel) sel.classList.toggle("hidden", !this.checked);
-        if (this.checked) populateReportYearSelect();
-    });
     document.getElementById("btn-export-report")?.addEventListener("click", exportReportToExcel);
 }
 
@@ -517,7 +510,7 @@ async function refreshDashboard() {
             document.getElementById("stat-total-expenses").innerText = monthlyTotal.toFixed(2) + " ج.م";
         }
 
-        // تحديث إحصائيات العربيات والسائقين من بيانات الرحلات
+        // تحديث إحصائيات السيارات والسائقين من بيانات الرحلات
         const trips = d.trips || [];
         const activeTrips = trips.filter(t => t[7] === "OPEN");
         const vehiclesInTrip = new Set(activeTrips.map(t => t[4]).filter(Boolean));
@@ -614,17 +607,25 @@ async function loadDropdowns(forceRefresh = false) {
     }
 }
 
+function lookupClientName(clientId) {
+    if (!clientId) return "—";
+    const client = (state.cache.clients || []).find(c => c.client_id === clientId);
+    return client ? client.client_name : clientId;
+}
+
 // ─── 5️⃣-د: الرحلات ───
 async function loadTripsData(forceRefresh = false) {
-    const tbody = document.getElementById("table-trips-body");
-    if (!tbody) return;
+    const tbodyOpen = document.getElementById("table-trips-open");
+    const tbodyClosed = document.getElementById("table-trips-closed");
+    if (!tbodyOpen || !tbodyClosed) return;
 
     if (!forceRefresh && state.cache.trips) {
         renderTripsTable(state.cache.trips);
         return;
     }
 
-    tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
+    tbodyOpen.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-muted text-xs"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
+    tbodyClosed.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-muted text-xs"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
 
     try {
         const response = await callBackend("getTrips", { Limit: 50 });
@@ -632,66 +633,75 @@ async function loadTripsData(forceRefresh = false) {
         state.activeTrips = state.cache.trips;
         renderTripsTable(state.cache.trips);
     } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-rose-500">فشل جلب البيانات</td></tr>`;
+        tbodyOpen.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-rose-500 text-xs">فشل جلب البيانات</td></tr>`;
+        tbodyClosed.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-rose-500 text-xs">فشل جلب البيانات</td></tr>`;
         console.error("loadTripsData Error:", err);
     }
 }
 
 function renderTripsTable(trips) {
-    const tbody = document.getElementById("table-trips-body");
-    if (!tbody) return;
+    const tbodyOpen = document.getElementById("table-trips-open");
+    const tbodyClosed = document.getElementById("table-trips-closed");
+    if (!tbodyOpen || !tbodyClosed) return;
 
-    const fragment = document.createDocumentFragment();
     const validTrips = trips.filter(t => t[0] && t[0] !== "Trip_ID" && !(t[13] === true || t[13] === "TRUE"));
+    const openTrips = validTrips.filter(t => (t[7] || "OPEN") === "OPEN");
+    const closedTrips = validTrips.filter(t => (t[7] || "OPEN") === "CLOSED");
 
-    if (validTrips.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-muted">لا يوجد رحلات</td></tr>`;
-        return;
-    }
-
-    validTrips.forEach(trip => {
-        const tripId = trip[0];
-        const status = trip[7] || "OPEN";
-        const currentVersion = trip[12] || 1;
-        const role = state.user.role;
-
-        let badgeClass = "bg-slate-800 text-slate-400";
-        let statusLabel = status;
-        if (status === "OPEN") { badgeClass = "bg-sky-500/10 text-sky-400 border border-sky-500/20"; statusLabel = "مفتوحة"; }
-        if (status === "CLOSED") { badgeClass = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"; statusLabel = "مغلقة"; }
-
-        let actionButtons = "";
-        if (status === "OPEN") {
-            const canEdit = ["Operations", "Admin", "Manager"].includes(role);
-            const canSettle = ["Accountant", "Admin", "Manager"].includes(role);
-            if (canEdit) {
-                actionButtons += `<button onclick="editTrip('${tripId}')" class="px-2 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition"><i class="fa-solid fa-pen ml-1"></i> تعديل</button> `;
-            }
-            if (canSettle) {
-                actionButtons += `<button onclick="triggerSettlement('${tripId}', ${currentVersion})" class="px-2 py-1 text-xs bg-emerald-500/20 text-emerald-400 rounded-lg hover:bg-emerald-500 hover:text-slate-950 font-medium transition active:scale-95"><i class="fa-solid fa-circle-check ml-1"></i> تصفية وإغلاق</button>`;
-            }
-            if (!actionButtons) {
-                actionButtons = `<span class="text-xs text-muted">—</span>`;
-            }
-        } else {
-            actionButtons = `<span class="text-xs text-emerald-500 font-semibold"><i class="fa-solid fa-lock ml-1"></i> مغلقة</span>`;
+    const renderTable = (tbody, tripsList, showActions) => {
+        const fragment = document.createDocumentFragment();
+        if (tripsList.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-muted text-xs">لا يوجد رحلات</td></tr>`;
+            return;
         }
+        tripsList.forEach(trip => {
+            const tripId = trip[0];
+            const status = trip[7] || "OPEN";
+            const currentVersion = trip[12] || 1;
+            const role = state.user.role;
 
-        const row = document.createElement("tr");
-        row.className = "table-row hover:bg-hover transition";
-        row.innerHTML = `
-            <td class="p-4 font-mono text-xs text-muted" data-label="الرحلة">${tripId}</td>
-            <td class="p-4 font-medium" data-label="السائق">${lookupDriverName(trip[3])}</td>
-            <td class="p-4 text-xs" data-label="العربية">${lookupVehicleLabel(trip[4])}</td>
-            <td class="p-4 font-mono text-xs text-amber-400" data-label="الجاز">${parseFloat(trip[14] || 0).toFixed(1)} لتر</td>
-            <td class="p-4" data-label="الحالة"><span class="px-2.5 py-1 rounded-full text-xs font-semibold ${badgeClass}">${statusLabel}</span></td>
-            <td class="p-4 text-center" data-label="">${actionButtons}</td>
-        `;
-        fragment.appendChild(row);
-    });
+            let badgeClass = "bg-slate-800 text-slate-400";
+            let statusLabel = status;
+            if (status === "OPEN") { badgeClass = "bg-sky-500/10 text-sky-400 border border-sky-500/20"; statusLabel = "مفتوحة"; }
+            if (status === "CLOSED") { badgeClass = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"; statusLabel = "مغلقة"; }
 
-    tbody.innerHTML = "";
-    tbody.appendChild(fragment);
+            let actionButtons = "";
+            if (showActions && status === "OPEN") {
+                const canEdit = ["Operations", "Admin", "Manager"].includes(role);
+                const canSettle = ["Accountant", "Admin", "Manager"].includes(role);
+                if (canEdit) {
+                    actionButtons += `<button onclick="editTrip('${tripId}')" class="px-2 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition"><i class="fa-solid fa-pen ml-1"></i> تعديل</button> `;
+                }
+                if (canSettle) {
+                    actionButtons += `<button onclick="triggerSettlement('${tripId}', ${currentVersion})" class="px-2 py-1 text-xs bg-emerald-500/20 text-emerald-400 rounded-lg hover:bg-emerald-500 hover:text-slate-950 font-medium transition active:scale-95"><i class="fa-solid fa-circle-check ml-1"></i> تصفية وإغلاق</button>`;
+                }
+                if (!actionButtons) {
+                    actionButtons = `<span class="text-xs text-muted">—</span>`;
+                }
+            } else if (!showActions) {
+                actionButtons = `<span class="text-xs text-emerald-500 font-semibold"><i class="fa-solid fa-lock ml-1"></i> مغلقة</span>`;
+            }
+
+            const row = document.createElement("tr");
+            row.className = "table-row hover:bg-hover transition";
+            row.innerHTML = `
+                <td class="p-2 font-mono text-xs text-muted" data-label="الرحلة">${tripId}</td>
+                <td class="p-2 text-xs" data-label="العميل">${lookupClientName(trip[2])}</td>
+                <td class="p-2 text-xs font-medium" data-label="السائق">${lookupDriverName(trip[3])}</td>
+                <td class="p-2 text-xs" data-label="السيارة">${lookupVehicleLabel(trip[4])}</td>
+                <td class="p-2 font-mono text-xs text-amber-400" data-label="الجاز">${parseFloat(trip[14] || 0).toFixed(1)} لتر</td>
+                <td class="p-2" data-label="الحالة"><span class="px-2 py-1 rounded-full text-xs font-semibold ${badgeClass}">${statusLabel}</span></td>
+                <td class="p-2 text-xs text-muted" data-label="بواسطة">${lookupUserName(trip[9])}</td>
+                <td class="p-2 text-center" data-label="">${actionButtons}</td>
+            `;
+            fragment.appendChild(row);
+        });
+        tbody.innerHTML = "";
+        tbody.appendChild(fragment);
+    };
+
+    renderTable(tbodyOpen, openTrips, true);
+    renderTable(tbodyClosed, closedTrips, false);
 }
 
 window.editTrip = async function(tripId) {
@@ -951,6 +961,11 @@ async function handleAddExpenseSubmit(e) {
         }
     };
 
+    if (params.Expense_Category === "أخرى") {
+        const customCat = document.getElementById("expense-other-category")?.value?.trim();
+        if (customCat) params.Expense_Category = customCat;
+    }
+
     if (!params.Expense_Category || parseFloat(params.Amount) <= 0) {
         Swal.fire({ icon: 'warning', title: 'بيانات ناقصة', text: 'برجاء اختيار النوع وإدخال المبلغ.' });
         setButtonLoading(submitBtn, false, '<i class="fa-solid fa-cloud-arrow-up ml-1"></i> تسجيل المصروف');
@@ -1095,27 +1110,16 @@ function updateExpensesSummary() {
     const thisMonth = now.getMonth();
     const thisYear = now.getFullYear();
 
-    let monthTotal = 0, utilitiesTotal = 0, rentTotal = 0, otherTotal = 0;
+    let monthTotal = 0;
 
     (expensesState.data || []).forEach(ex => {
         const d = ex.expense_date ? new Date(ex.expense_date) : null;
         if (d && d.getMonth() === thisMonth && d.getFullYear() === thisYear) {
-            const amt = ex.amount || 0;
-            monthTotal += amt;
-            if (ex.category === "كهرباء" || ex.category === "مياه" || ex.category === "إنترنت") {
-                utilitiesTotal += amt;
-            } else if (ex.category === "إيجار") {
-                rentTotal += amt;
-            } else {
-                otherTotal += amt;
-            }
+            monthTotal += ex.amount || 0;
         }
     });
 
     document.getElementById("expenses-month-total").innerText = monthTotal.toFixed(2) + " ج.م";
-    document.getElementById("expenses-utilities-total").innerText = utilitiesTotal.toFixed(2) + " ج.م";
-    document.getElementById("expenses-rent-total").innerText = rentTotal.toFixed(2) + " ج.م";
-    document.getElementById("expenses-other-total").innerText = otherTotal.toFixed(2) + " ج.م";
 }
 
 window.editExpense = async function(expenseId) {
@@ -1319,14 +1323,22 @@ async function loadFuelAnalytics() {
     }
 }
 
+function lookupUserName(userId) {
+    if (!userId) return "—";
+    const user = (state.cache.users || []).find(u => u.user_id === userId);
+    return user ? (user.full_name || user.name || userId) : userId;
+}
+
 // ─── 5️⃣-ز: البنزينة ───
 async function loadFuelData() {
     try {
         const response = await callBackend("getFuelBalance");
         if (response && response.data) {
-            document.getElementById("fuel-current-balance").innerText = (response.data.current_balance || 0).toFixed(2) + " ج.م";
-            document.getElementById("fuel-current-price").innerText = (response.data.fuel_price_per_liter || 0).toFixed(2) + " ج.م";
-            document.getElementById("fuel-last-updated").innerText = response.data.last_updated ? new Date(response.data.last_updated).toLocaleString('ar-EG') : "--";
+            const balance = response.data.current_balance || 0;
+            const price = response.data.fuel_price_per_liter || 0;
+            const totalLiters = price > 0 ? (balance / price) : 0;
+            document.getElementById("fuel-current-balance").innerText = balance.toFixed(2) + " ج.م";
+            document.getElementById("fuel-total-liters").innerText = totalLiters.toFixed(1) + " لتر";
         }
         await loadFuelTransactions();
     } catch (err) {
@@ -1337,7 +1349,7 @@ async function loadFuelData() {
 async function loadFuelTransactions() {
     const tbody = document.getElementById("table-fuel-transactions") || document.getElementById("table-fuel-body");
     if (!tbody) return;
-    tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-muted"><i class="fa-solid fa-spinner fa-spin ml-2"></i>جاري التحميل...</td></tr>`;
 
     try {
         const response = await callBackend("getFuelTransactions", { Limit: 20 });
@@ -1346,7 +1358,7 @@ async function loadFuelTransactions() {
             renderFuelTransactions(response.data);
         }
     } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-rose-500">فشل جلب البيانات</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-rose-500">فشل جلب البيانات</td></tr>`;
     }
 }
 
@@ -1356,11 +1368,17 @@ function renderFuelTransactions(transactions) {
     tbody.innerHTML = "";
 
     if (!transactions || transactions.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-muted">لا توجد حركات</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-muted">لا توجد حركات</td></tr>`;
         return;
     }
 
     const fragment = document.createDocumentFragment();
+
+    const sourceMap = {
+        'INITIAL': 'داخلي - بداية رحلة',
+        'ROAD': 'خارجي - أثناء الرحلة',
+        'ADD': 'إضافة رصيد'
+    };
 
     transactions.forEach(t => {
         const row = document.createElement("tr");
@@ -1372,11 +1390,12 @@ function renderFuelTransactions(transactions) {
         };
         row.innerHTML = `
             <td class="p-4 text-xs" data-label="التاريخ">${t.created_at ? new Date(t.created_at).toLocaleString('ar-EG') : ''}</td>
-            <td class="p-4 text-xs" data-label="العربية">${t.vehicle_id || '--'}</td>
+            <td class="p-4 text-xs" data-label="السيارة">${lookupVehicleLabel(t.vehicle_id)}</td>
             <td class="p-4 text-xs" data-label="النوع">${typeMap[t.transaction_type] || t.transaction_type}</td>
             <td class="p-4 text-xs" data-label="اللترات">${t.amount_liters || 0}</td>
             <td class="p-4 text-xs ${t.amount_egp < 0 ? 'text-rose-400' : 'text-emerald-400'}" data-label="القيمة">${t.amount_egp || 0}</td>
-            <td class="p-4 text-xs" data-label="المصدر">${t.source || '--'}</td>
+            <td class="p-4 text-xs" data-label="المصدر">${sourceMap[t.transaction_type] || t.source || '--'}</td>
+            <td class="p-4 text-xs" data-label="بواسطة">${lookupUserName(t.created_by)}</td>
         `;
         fragment.appendChild(row);
     });
@@ -1432,7 +1451,7 @@ async function handleUpdateFuelPrice() {
     }
 }
 
-// ─── 5️⃣-ح: العربيات ───
+// ─── 5️⃣-ح: السيارات ───
 async function loadVehiclesData(forceRefresh = false) {
     const tbody = document.getElementById("table-vehicles-body");
     if (!tbody) return;
@@ -1490,7 +1509,7 @@ function renderVehiclesTable(vehicles) {
 
 async function handleAddVehicle() {
     const { value: formValues } = await Swal.fire({
-        title: 'إضافة عربية جديدة',
+        title: 'إضافة سيارة جديدة',
         html: `
             <div class="text-right">
                 <label class="block text-sm font-medium mb-1">رقم اللوحة *</label>
@@ -1536,7 +1555,7 @@ window.editVehicle = async function(vehicleId) {
     if (!vehicle) return;
 
     const { value: formValues } = await Swal.fire({
-        title: 'تعديل العربية',
+        title: 'تعديل السيارة',
         html: `
             <div class="text-right">
                 <label class="block text-sm font-medium mb-1">رقم اللوحة</label>
@@ -1581,7 +1600,7 @@ window.editVehicle = async function(vehicleId) {
 window.deleteVehicle = async function(vehicleId) {
     const confirm = await Swal.fire({
         title: 'تأكيد الحذف؟',
-        text: 'هل أنت متأكد من حذف هذه العربية؟',
+        text: 'هل أنت متأكد من حذف هذه السيارة؟',
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: 'نعم، احذف',
@@ -2516,7 +2535,7 @@ function renderPermissionsMatrix(container, data) {
         'الرحلات': ['getTrips', 'getDrivers', 'createTrip', 'updateTripStatus', 'updateTrip', 'settleTripFinancials', 'getTripExpenses'],
         'المصروفات': ['addExpense', 'updateExpense', 'deleteExpense', 'getExpenses', 'getMonthlyExpenses'],
         'المستخدمين': ['createUser', 'getUsers', 'toggleUserStatus', 'updateUserRole', 'deleteUser', 'resetUserPassword'],
-        'العربيات': ['getVehicles', 'createVehicle', 'updateVehicle', 'deleteVehicle'],
+        'السيارات': ['getVehicles', 'createVehicle', 'updateVehicle', 'deleteVehicle'],
         'السائقين': ['getDriversList', 'createDriver', 'updateDriverData', 'deleteDriver'],
         'العملاء': ['getClients', 'createClient', 'updateClient', 'deleteClient'],
         'البنزينة': ['getFuelBalance', 'addFuelBalance', 'getFuelTransactions', 'getFuelAnalytics', 'updateFuelPrice'],
@@ -2535,14 +2554,14 @@ function renderPermissionsMatrix(container, data) {
         'getExpenses': 'عرض المصروفات', 'getMonthlyExpenses': 'مصروفات الشهر',
         'createUser': 'إنشاء مستخدم', 'getUsers': 'عرض المستخدمين', 'toggleUserStatus': 'تعطيل/تفعيل مستخدم',
         'updateUserRole': 'تغيير دور', 'deleteUser': 'حذف مستخدم', 'resetUserPassword': 'إعادة كلمة السر',
-        'getVehicles': 'عرض العربيات', 'createVehicle': 'إضافة عربية', 'updateVehicle': 'تعديل عربية', 'deleteVehicle': 'حذف عربية',
+        'getVehicles': 'عرض السيارات', 'createVehicle': 'إضافة سيارة', 'updateVehicle': 'تعديل سيارة', 'deleteVehicle': 'حذف سيارة',
         'getDriversList': 'عرض السائقين', 'createDriver': 'إضافة سائق', 'updateDriverData': 'تعديل سائق', 'deleteDriver': 'حذف سائق',
         'getClients': 'عرض العملاء', 'createClient': 'إضافة عميل', 'updateClient': 'تعديل عميل', 'deleteClient': 'حذف عميل',
         'getFuelBalance': 'رصيد البنزينة', 'addFuelBalance': 'إضافة رصيد بنزينة',
         'getFuelTransactions': 'حركة البنزينة', 'getFuelAnalytics': 'تحليل البنزينة', 'updateFuelPrice': 'تحديث سعر السولار',
         'getNotifications': 'عرض التنبيهات', 'markNotificationRead': 'تحديد مقروء', 'markAllNotificationsRead': 'تحديد الكل مقروء',
         'deleteNotification': 'حذف تنبيه',
-        'getMaintenance': 'عرض الصيانة', 'getVehicleMaintenance': 'صيانة عربية', 'getTripMaintenance': 'صيانة رحلة',
+        'getMaintenance': 'عرض الصيانة', 'getVehicleMaintenance': 'صيانة سيارة', 'getTripMaintenance': 'صيانة رحلة',
         'updateMaintenance': 'تحديث صيانة', 'deleteMaintenance': 'حذف صيانة',
         'getMyBalance': 'رصيدي', 'getUserBalance': 'رصيد مستخدم', 'getMyTransactions': 'حركتي',
         'getAllTransactions': 'كل الحركة', 'addBalance': 'إضافة عهدة', 'deductBalance': 'خصم عهدة', 'transferBalance': 'تحويل عهدة',
@@ -2867,20 +2886,14 @@ async function generateReport() {
     
     try {
         let params = {};
-        if (type === "monthlyTrends" || yearToggle) {
-            params.year = year;
-        } else {
-            if (fromDate) params.fromDate = fromDate;
-            if (toDate) params.toDate = toDate;
-        }
+        if (fromDate) params.fromDate = fromDate;
+        if (toDate) params.toDate = toDate;
         
         const actionMap = {
-            profitLoss: "getProfitLoss",
             expenseBreakdown: "getExpenseBreakdown",
             fuelSummary: "getFuelSummary",
             driverPerformance: "getDriverPerformance",
             clientActivity: "getClientActivity",
-            monthlyTrends: "getMonthlyTrends",
             vehicleUtilization: "getVehicleUtilization"
         };
         
@@ -2917,16 +2930,7 @@ function renderReportSummary(type, data) {
     
     if (data.summary) {
         const s = data.summary;
-        if (type === "profitLoss") {
-            values = [
-                (s.totalRevenue || 0).toLocaleString() + " ج.م",
-                (s.totalExpenses || 0).toLocaleString() + " ج.م",
-                (s.netProfit || 0).toLocaleString() + " ج.م",
-                (s.margin || 0) + "%"
-            ];
-            if (s.netProfit < 0) labels[2] = "صافي الخسارة";
-            labels[3] = "الهامش %";
-        } else if (type === "fuelSummary") {
+        if (type === "fuelSummary") {
             labels = ["إجمالي التكلفة", "إجمالي اللترات", "العمليات", "متوسط السعر"];
             values = [
                 (s.totalCost || 0).toLocaleString() + " ج.م",
@@ -2950,19 +2954,11 @@ function renderReportSummary(type, data) {
                 (s.clientCount || 0).toLocaleString(),
                 s.totalTrips > 0 ? Math.round(s.totalRevenue / s.totalTrips).toLocaleString() + " ج.م" : "0 ج.م"
             ];
-        } else if (type === "monthlyTrends") {
-            labels = ["إجمالي الإيرادات", "إجمالي المصروفات", "صافي السنة", "أشهر نشطة"];
-            values = [
-                (s.totalRevenue || 0).toLocaleString() + " ج.م",
-                (s.totalExpense || 0).toLocaleString() + " ج.م",
-                (s.net || 0).toLocaleString() + " ج.م",
-                (s.activeMonths || 0) + "/12"
-            ];
         } else if (type === "expenseBreakdown") {
             labels = ["إجمالي المصروفات", "عدد المعاملات", "", ""];
             values = [(data.total || 0).toLocaleString() + " ج.م", (data.count || 0).toLocaleString(), "", ""];
         } else if (type === "vehicleUtilization") {
-            labels = ["إجمالي الإيرادات", "عدد الرحلات", "عدد العربيات", ""];
+            labels = ["إجمالي الإيرادات", "عدد الرحلات", "عدد السيارات", ""];
             values = [
                 (s.totalTrips ? data.breakdown.reduce((a,b) => a + (b.revenue||0), 0) : 0).toLocaleString() + " ج.م",
                 (s.totalTrips || 0).toLocaleString(),
@@ -2995,27 +2991,19 @@ function renderReportChart(type, data) {
     if (reportChartInstance) reportChartInstance.destroy();
     
     let labels = [], datasets = [];
-    const bgColor = "#f59e0b";
-    const bgColor2 = "#ef4444";
-    const bgColor3 = "#22c55e";
-    
-    if (type === "profitLoss" && data.chart) {
-        labels = data.chart.labels || [];
-        datasets = [{
-            label: "القيمة (ج.م)",
-            data: data.chart.values || [],
-            backgroundColor: [bgColor3, bgColor2, "#3b82f6"],
-            borderRadius: 6
-        }];
-    } else if (type === "expenseBreakdown" && data.chart) {
-        const colors = ["#f59e0b", "#ef4444", "#3b82f6", "#22c55e", "#8b5cf6", "#ec4899", "#14b8a6"];
-        labels = data.chart.labels || [];
-        datasets = [{
-            label: "القيمة (ج.م)",
-            data: data.chart.values || [],
-            backgroundColor: labels.map((_, i) => colors[i % colors.length]),
-            borderRadius: 6
-        }];
+
+    if (type === "expenseBreakdown" && data.breakdown) {
+        const cats = Object.keys(data.breakdown);
+        if (cats.length > 0) {
+            const colors = ["#f59e0b", "#ef4444", "#3b82f6", "#22c55e", "#8b5cf6", "#ec4899", "#14b8a6"];
+            labels = cats;
+            datasets = [{
+                label: "القيمة (ج.م)",
+                data: cats.map(c => data.breakdown[c]),
+                backgroundColor: cats.map((_, i) => colors[i % colors.length]),
+                borderRadius: 0
+            }];
+        }
     } else if (type === "fuelSummary" && data.chart) {
         labels = data.chart.labels || [];
         datasets = [{
@@ -3040,13 +3028,6 @@ function renderReportChart(type, data) {
             backgroundColor: "#8b5cf6",
             borderRadius: 6
         }];
-    } else if (type === "monthlyTrends" && data.chart) {
-        labels = data.chart.labels || [];
-        datasets = [
-            { label: "الإيرادات", data: data.chart.revenue || [], backgroundColor: "#22c55e", borderRadius: 4 },
-            { label: "المصروفات", data: data.chart.expense || [], backgroundColor: "#ef4444", borderRadius: 4 },
-            { label: "صافي الربح", data: data.chart.net || [], backgroundColor: "#3b82f6", borderRadius: 4 }
-        ];
     } else if (type === "vehicleUtilization" && data.chart) {
         labels = data.chart.labels || [];
         datasets = [{
@@ -3087,37 +3068,26 @@ function renderReportTable(type, data) {
     const title = document.getElementById("report-table-title");
     if (!thead || !tbody) return;
     
-    if (type === "profitLoss" && data.expenseByCategory) {
-        title.textContent = "P&L - تفاصيل المصروفات حسب التصنيف";
-        thead.innerHTML = '<tr><th class="p-4">التصنيف</th><th class="p-4">القيمة</th></tr>';
-        const cats = Object.keys(data.expenseByCategory).sort();
-        if (cats.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="2" class="p-8 text-center text-muted">لا توجد بيانات</td></tr>';
-            return;
-        }
-        let html = "";
-        cats.forEach(c => {
-            html += `<tr><td class="p-4" data-label="التصنيف">${esc(c)}</td><td class="p-4 font-mono" data-label="القيمة">${Math.round(data.expenseByCategory[c]).toLocaleString()} ج.م</td></tr>`;
-        });
-        tbody.innerHTML = html;
-        
-    } else if (type === "expenseBreakdown" && data.breakdown) {
+    if (type === "expenseBreakdown" && data.breakdown) {
         title.textContent = "تحليل المصروفات";
         thead.innerHTML = '<tr><th class="p-4">التصنيف</th><th class="p-4">القيمة</th><th class="p-4">النسبة</th></tr>';
-        const rows = data.breakdown;
-        if (rows.length === 0) {
+        const cats = Object.keys(data.breakdown);
+        if (cats.length === 0) {
             tbody.innerHTML = '<tr><td colspan="3" class="p-8 text-center text-muted">لا توجد بيانات</td></tr>';
             return;
         }
+        const total = data.total || cats.reduce((s, c) => s + (data.breakdown[c] || 0), 0);
         let html = "";
-        rows.forEach(r => {
-            html += `<tr><td class="p-4" data-label="التصنيف">${esc(r.category)}</td><td class="p-4 font-mono" data-label="القيمة">${r.amount.toLocaleString()} ج.م</td><td class="p-4 font-mono" data-label="النسبة">${r.percentage}%</td></tr>`;
+        cats.forEach(c => {
+            const val = data.breakdown[c] || 0;
+            const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+            html += `<tr><td class="p-4" data-label="التصنيف">${esc(c)}</td><td class="p-4 font-mono" data-label="القيمة">${val.toLocaleString()} ج.م</td><td class="p-4 font-mono" data-label="النسبة">${pct}%</td></tr>`;
         });
         tbody.innerHTML = html;
         
     } else if (type === "fuelSummary" && data.breakdown) {
-        title.textContent = "تقرير البنزينة حسب العربية";
-        thead.innerHTML = '<tr><th class="p-4">العربية</th><th class="p-4">اللترات</th><th class="p-4">التكلفة</th><th class="p-4">العمليات</th><th class="p-4">متوسط السعر</th></tr>';
+        title.textContent = "تقرير البنزينة حسب السيارة";
+        thead.innerHTML = '<tr><th class="p-4">السيارة</th><th class="p-4">اللترات</th><th class="p-4">التكلفة</th><th class="p-4">العمليات</th><th class="p-4">متوسط السعر</th></tr>';
         const rows = data.breakdown;
         if (rows.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-muted">لا توجد بيانات</td></tr>';
@@ -3125,7 +3095,7 @@ function renderReportTable(type, data) {
         }
         let html = "";
         rows.forEach(r => {
-            html += `<tr><td class="p-4" data-label="العربية">${esc(r.vehicle)}</td><td class="p-4 font-mono" data-label="اللترات">${r.liters.toLocaleString()}</td><td class="p-4 font-mono" data-label="التكلفة">${r.cost.toLocaleString()} ج.م</td><td class="p-4" data-label="العمليات">${r.count}</td><td class="p-4 font-mono" data-label="متوسط السعر">${r.avgPrice} ج.م</td></tr>`;
+            html += `<tr><td class="p-4" data-label="السيارة">${esc(r.vehicle)}</td><td class="p-4 font-mono" data-label="اللترات">${r.liters.toLocaleString()}</td><td class="p-4 font-mono" data-label="التكلفة">${r.cost.toLocaleString()} ج.م</td><td class="p-4" data-label="العمليات">${r.count}</td><td class="p-4 font-mono" data-label="متوسط السعر">${r.avgPrice} ج.م</td></tr>`;
         });
         tbody.innerHTML = html;
         
@@ -3157,22 +3127,9 @@ function renderReportTable(type, data) {
         });
         tbody.innerHTML = html;
         
-    } else if (type === "monthlyTrends" && data.breakdown) {
-        title.textContent = `الاتجاهات الشهرية لسنة ${data.year}`;
-        thead.innerHTML = '<tr><th class="p-4">الشهر</th><th class="p-4">الرحلات</th><th class="p-4">الإيرادات</th><th class="p-4">المصروفات</th><th class="p-4">صافي الربح</th></tr>';
-        const rows = data.breakdown;
-        let html = "";
-        rows.forEach(r => {
-            if (r.count === 0) return;
-            const netClass = r.net >= 0 ? "text-green-400" : "text-rose-400";
-            html += `<tr><td class="p-4" data-label="الشهر">${esc(r.monthName)}</td><td class="p-4" data-label="الرحلات">${r.count}</td><td class="p-4 font-mono text-green-400" data-label="الإيرادات">${r.revenue.toLocaleString()} ج.م</td><td class="p-4 font-mono text-rose-400" data-label="المصروفات">${r.expense.toLocaleString()} ج.م</td><td class="p-4 font-mono ${netClass}" data-label="صافي الربح">${r.net.toLocaleString()} ج.م</td></tr>`;
-        });
-        if (html === "") { html = '<tr><td colspan="5" class="p-8 text-center text-muted">لا توجد بيانات لهذه السنة</td></tr>'; }
-        tbody.innerHTML = html;
-        
     } else if (type === "vehicleUtilization" && data.breakdown) {
-        title.textContent = "استغلال العربيات";
-        thead.innerHTML = '<tr><th class="p-4">العربية</th><th class="p-4">الرحلات</th><th class="p-4">المغلقة</th><th class="p-4">الإيرادات</th><th class="p-4">تكلفة الوقود</th><th class="p-4">صافي الربح</th><th class="p-4">متوسط الرحلة</th></tr>';
+        title.textContent = "استغلال السيارات";
+        thead.innerHTML = '<tr><th class="p-4">السيارة</th><th class="p-4">الرحلات</th><th class="p-4">المغلقة</th><th class="p-4">الإيرادات</th><th class="p-4">تكلفة الوقود</th><th class="p-4">صافي الربح</th><th class="p-4">متوسط الرحلة</th></tr>';
         const rows = data.breakdown;
         if (rows.length === 0) {
             tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-muted">لا توجد بيانات</td></tr>';
@@ -3181,7 +3138,7 @@ function renderReportTable(type, data) {
         let html = "";
         rows.forEach(r => {
             const netClass = r.net >= 0 ? "text-green-400" : "text-rose-400";
-            html += `<tr><td class="p-4" data-label="العربية">${esc(r.vehicleName)}</td><td class="p-4" data-label="الرحلات">${r.trips}</td><td class="p-4" data-label="المغلقة">${r.closedTrips}</td><td class="p-4 font-mono" data-label="الإيرادات">${r.revenue.toLocaleString()} ج.م</td><td class="p-4 font-mono" data-label="تكلفة الوقود">${r.fuelCost.toLocaleString()} ج.م</td><td class="p-4 font-mono ${netClass}" data-label="صافي الربح">${r.net.toLocaleString()} ج.م</td><td class="p-4 font-mono" data-label="متوسط الرحلة">${r.avgPerTrip.toLocaleString()} ج.م</td></tr>`;
+            html += `<tr><td class="p-4" data-label="السيارة">${esc(r.vehicleName)}</td><td class="p-4" data-label="الرحلات">${r.trips}</td><td class="p-4" data-label="المغلقة">${r.closedTrips}</td><td class="p-4 font-mono" data-label="الإيرادات">${r.revenue.toLocaleString()} ج.م</td><td class="p-4 font-mono" data-label="تكلفة الوقود">${r.fuelCost.toLocaleString()} ج.م</td><td class="p-4 font-mono ${netClass}" data-label="صافي الربح">${r.net.toLocaleString()} ج.م</td><td class="p-4 font-mono" data-label="متوسط الرحلة">${r.avgPerTrip.toLocaleString()} ج.م</td></tr>`;
         });
         tbody.innerHTML = html;
     }
@@ -3211,13 +3168,11 @@ function exportReportToExcel() {
     });
     
     const reportNames = {
-        profitLoss: "الارباح_والخسائر",
         expenseBreakdown: "تحليل_المصروفات",
         fuelSummary: "تقرير_البنزينة",
         driverPerformance: "اداء_السائقين",
         clientActivity: "نشاط_العملاء",
-        monthlyTrends: "الاتجاهات_الشهرية",
-        vehicleUtilization: "استغلال_العربيات"
+        vehicleUtilization: "استغلال_السيارات"
     };
     
     const filename = reportNames[type] || "تقرير";
