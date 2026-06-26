@@ -5,7 +5,7 @@
  */
 
 // ─── 1️⃣ الإعدادات والثوابت العالمية ───
-const BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbzCFtZ0qmMX4kaJCb5m6swv9Y14hyd25WrEjIarq5iW4k_lxAIbyvU4nDoyKiaaa0Lb/exec";
+const BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbwopmT-4P7RvvEO2g6Hz4TvMv5loMHsOPbjiDxOWblJvpxm_zL60Gmy995JjevrKebG/exec";
 
 // حالة التطبيق المحلية
 const state = {
@@ -552,34 +552,40 @@ async function loadDropdowns(forceRefresh = false) {
     if (dropdownsLoaded && !forceRefresh) return;
     
     try {
-        // طلب واحد مجمّع بدل 4 طلبات منفصلة (تحسين السرعة)
-        const lookups = await callBackend("getLookups");
-        const lk = lookups?.data || {};
-        const clientsRes = { data: lk.clients };
-        const driversRes = { data: lk.drivers };
-        const vehiclesRes = { data: lk.vehicles };
-        const fuelRes = { data: lk.fuel };
+        // طلبين متوازيين: getAvailableResources (سائقين/عربيات/عملاء متاحين) + getLookups (سعر البنزين فقط)
+        const [availRes, lookups] = await Promise.all([
+            callBackend("getAvailableResources").catch(() => null),
+            callBackend("getLookups").catch(() => null)
+        ]);
 
-        if (clientsRes?.data) {
+        const avail = availRes?.data || {};
+        const lk = lookups?.data || {};
+
+        // استخدم getAvailableResources للعملاء والسائقين والعربيات (فلترة المتاحين)
+        const clientsData = avail.clients || lk.clients || [];
+        const driversData = avail.drivers || lk.drivers || [];
+        const vehiclesData = avail.vehicles || lk.vehicles || [];
+
+        if (clientsData.length) {
             const clientSelect = document.getElementById("trip-customer-id");
             if (clientSelect) {
                 clientSelect.innerHTML = '<option value="">-- اختر العميل --</option>';
-                clientsRes.data.forEach(client => {
+                clientsData.forEach(client => {
                     const opt = document.createElement("option");
                     opt.value = client.client_id;
                     opt.textContent = client.client_name;
                     clientSelect.appendChild(opt);
                 });
             }
-            state.cache.clients = clientsRes.data;
+            state.cache.clients = clientsData;
         }
 
-        if (driversRes?.data) {
-            state.cache.drivers = driversRes.data;
+        if (driversData.length) {
+            state.cache.drivers = driversData;
             const select = document.getElementById("trip-driver-id");
             if (select) {
                 select.innerHTML = '<option value="">-- اختر --</option>';
-                driversRes.data.forEach(driver => {
+                driversData.forEach(driver => {
                     const opt = document.createElement("option");
                     opt.value = driver.driver_id;
                     opt.textContent = driver.full_name + (driver.current_advance > 0 ? ` (عهدة: ${driver.current_advance})` : "");
@@ -588,12 +594,12 @@ async function loadDropdowns(forceRefresh = false) {
             }
         }
 
-        if (vehiclesRes?.data) {
-            state.cache.vehicles = vehiclesRes.data;
+        if (vehiclesData.length) {
+            state.cache.vehicles = vehiclesData;
             const select = document.getElementById("trip-vehicle-id");
             if (select) {
                 select.innerHTML = '<option value="">-- اختر --</option>';
-                vehiclesRes.data.forEach(vehicle => {
+                vehiclesData.forEach(vehicle => {
                     const opt = document.createElement("option");
                     opt.value = vehicle.vehicle_id;
                     opt.textContent = vehicle.plate_number + " (" + vehicle.model + ")";
@@ -602,10 +608,10 @@ async function loadDropdowns(forceRefresh = false) {
             }
         }
 
-        if (fuelRes?.data) {
+        if (lk.fuel) {
             const priceInput = document.getElementById("trip-fuel-price");
             if (priceInput) {
-                priceInput.value = fuelRes.data.fuel_price_per_liter || 20.50;
+                priceInput.value = lk.fuel.fuel_price_per_liter || 20.50;
             }
         }
 

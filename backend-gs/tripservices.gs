@@ -447,3 +447,46 @@ function tripService_updateAdvanceSpent(tripId, amount, userId) {
     }
   }
 }
+
+/**
+ * 9. دالة جلب السائقين والعربيات المتاحين (غير مرتبطين برحلة مفتوحة)
+ */
+function tripService_getAvailableResources(e) {
+  let ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // 1. جلب كل الرحلات المفتوحة
+  let tripsData = getCachedData("Trips_Log");
+  let busyDriverIds = {};
+  let busyVehicleIds = {};
+  
+  if (tripsData) {
+    for (let i = 1; i < tripsData.length; i++) {
+      if (tripsData[i][7] === "OPEN" && tripsData[i][13] !== true) {
+        let driverId = tripsData[i][3];
+        let vehicleId = tripsData[i][4];
+        if (driverId) busyDriverIds[driverId] = true;
+        if (vehicleId) busyVehicleIds[vehicleId] = true;
+      }
+    }
+  }
+  
+  // 2. جلب كل السائقين وفلترة المتاحين
+  let drivers = _extractData(driverService_getDrivers(ss)) || [];
+  let availableDrivers = drivers.filter(d => !busyDriverIds[d.driver_id] && d.status === "ACTIVE");
+  
+  // 3. جلب كل العربيات وفلترة المتاحة
+  let vehicles = _extractData(vehicleService_getVehicles(ss)) || [];
+  let availableVehicles = vehicles.filter(v => !busyVehicleIds[v.vehicle_id] && v.status === "ACTIVE");
+  
+  // 4. جلب العملاء (كلهم)
+  let clients = _extractData(clientService_getClients(ss)) || [];
+  
+  return {
+    "success": true,
+    "data": {
+      "drivers": availableDrivers,
+      "vehicles": availableVehicles,
+      "clients": clients
+    }
+  };
+}

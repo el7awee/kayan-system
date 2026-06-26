@@ -262,7 +262,7 @@ Frontend: renderReport(type, data)
 | Component | URL / ID | Version |
 |-----------|----------|---------|
 | GitHub Pages | `https://el7awee.github.io/kayan-system/` | v47 (commit `d94efa5`) |
-| Apps Script | `https://script.google.com/macros/s/AKfycbx8eJLgqDVpKdMnSK12uT8T2AdweI8ZPCjHWtCn9ys9dEcHm62Re0FLoKepKGipyu9F/exec` | v47 |
+| Apps Script | `https://script.google.com/macros/s/AKfycbwopmT-4P7RvvEO2g6Hz4TvMv5loMHsOPbjiDxOWblJvpxm_zL60Gmy995JjevrKebG/exec` | v64 |
 | Script ID | `1Ok92AhpZmyiRk21cZoLkWU6dQYuliLxZBk9yyJQOSmVdWlvPKTxZiLcZ` | — |
 | Firebase project | `kayan-system-f494f` | — |
 | Firebase config | `apiKey: AIzaSyCyQQiA4amVXPzPPtY74n_RsVKq0tk4GQ8` | — |

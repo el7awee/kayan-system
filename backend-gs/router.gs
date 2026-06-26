@@ -61,6 +61,9 @@ function routeRequest(e, method, userId, userRole) {
       case 'getTrips':
         resultPayload = tripService_getTrips(e);
         break;
+      case 'getAvailableResources':
+        resultPayload = tripService_getAvailableResources(e);
+        break;
       
       case 'getVehicles':
         resultPayload = vehicleService_getVehicles(ss);
