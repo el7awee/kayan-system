@@ -2728,7 +2728,7 @@ function setupUserLayout() {
     else timeGreeting = "مساء الخير";
     const greetingText = `${timeGreeting}، ${userName}`;
     if (greeting) greeting.innerText = greetingText;
-    if (dashGreeting) dashGreeting.innerText = greetingText;
+    if (dashGreeting) dashGreeting.innerText = `${userName} — ${state.user.role || 'مستخدم'}`;
 
     const navSettings = document.getElementById("nav-settings");
     if (navSettings) {
