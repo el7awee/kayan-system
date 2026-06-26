@@ -397,12 +397,24 @@ function fuelService_getAnalytics(ss) {
     totalCost += cost;
   }
   
-  let result = Object.entries(consumption).map(([vehicle_id, data]) => ({
-    vehicle_id,
-    total_liters: Math.round(data.liters * 100) / 100,
-    total_cost: Math.round(data.cost * 100) / 100,
-    trip_count: data.trips.size
-  })).sort((a, b) => b.total_liters - a.total_liters);
+  let result = Object.entries(consumption).map(([vehicle_id, data]) => {
+    let plate = vehicle_id;
+    try {
+      let vData = getCachedData("Vehicles");
+      if (vData) {
+        for (let i = 1; i < vData.length; i++) {
+          if (vData[i][0] === vehicle_id) { plate = vData[i][1] || vehicle_id; break; }
+        }
+      }
+    } catch (e) {}
+    return {
+      vehicle_id,
+      vehicle_plate: plate,
+      total_liters: Math.round(data.liters * 100) / 100,
+      total_cost: Math.round(data.cost * 100) / 100,
+      trip_count: data.trips.size
+    };
+  }).sort((a, b) => b.total_liters - a.total_liters);
   
   endTimer("fuelService_getAnalytics");
   

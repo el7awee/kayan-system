@@ -5,7 +5,7 @@
  */
 
 // ─── 1️⃣ الإعدادات والثوابت العالمية ───
-const BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbxA1YXpXhAyMAzokYuANiC3SuV51APPtneHIvxibIM7kcHpfwJFhpMjY0eCVxseBlX5/exec";
+const BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbzMOIaSdh4errWvtQiM9XZWYlu4ar3pgZPV74yAnImShd872_OUoI-tL0ammqJHyrSD/exec";
 
 // حالة التطبيق المحلية
 const state = {
@@ -1234,16 +1234,17 @@ async function renderFuelChart() {
     try {
         const response = await callBackend("getFuelAnalytics");
         const data = response?.data;
-        if (!data || data.length === 0) {
+        const items = data?.vehicles;
+        if (!items || items.length === 0) {
             if (fuelChartInstance) { fuelChartInstance.destroy(); fuelChartInstance = null; }
             return;
         }
 
         if (fuelChartInstance) fuelChartInstance.destroy();
 
-        const items = data.slice(0, 10);
-        const labels = items.map(i => i.vehicle_plate || i.vehicle_id || "N/A");
-        const values = items.map(i => parseFloat(i.total_liters) || 0);
+        const topItems = items.slice(0, 10);
+        const labels = topItems.map(i => lookupVehicleLabel(i.vehicle_id));
+        const values = topItems.map(i => parseFloat(i.total_liters) || 0);
 
         fuelChartInstance = new Chart(canvas, {
             type: "bar",
@@ -1278,7 +1279,8 @@ async function loadFuelAnalytics() {
     try {
         const response = await callBackend("getFuelAnalytics");
         const data = response?.data;
-        if (!data || data.length === 0) {
+        const items = data?.vehicles;
+        if (!items || items.length === 0) {
             tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted">لا توجد بيانات</td></tr>';
             document.getElementById("fuel-analytics-total").textContent = "0";
             return;
@@ -1287,7 +1289,7 @@ async function loadFuelAnalytics() {
         let grandTotal = 0;
         const fragment = document.createDocumentFragment();
 
-        data.forEach(item => {
+        items.forEach(item => {
             const liters = parseFloat(item.total_liters) || 0;
             const cost = parseFloat(item.total_cost) || 0;
             const trips = parseInt(item.trip_count) || 0;
@@ -1296,7 +1298,7 @@ async function loadFuelAnalytics() {
             const row = document.createElement("tr");
             row.className = "border-b border-border hover:bg-hover/50 transition";
             row.innerHTML = `
-                <td class="py-2 px-2">${item.vehicle_plate || item.vehicle_id || "N/A"}</td>
+                <td class="py-2 px-2">${lookupVehicleLabel(item.vehicle_id)}</td>
                 <td class="py-2 px-2 font-mono">${liters.toFixed(1)}</td>
                 <td class="py-2 px-2 font-mono">${cost.toFixed(2)}</td>
                 <td class="py-2 px-2">${trips}</td>

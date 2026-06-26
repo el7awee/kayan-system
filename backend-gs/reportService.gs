@@ -137,14 +137,10 @@ function reportService_getExpenseBreakdown(params) {
     total += amt;
   }
   
-  var breakdown = [];
+  var breakdown = {};
   var catKeys = Object.keys(categories).sort();
   for (var j = 0; j < catKeys.length; j++) {
-    breakdown.push({
-      category: catKeys[j],
-      amount: Math.round(categories[catKeys[j]]),
-      percentage: total > 0 ? parseFloat(((categories[catKeys[j]] / total) * 100).toFixed(1)) : 0
-    });
+    breakdown[catKeys[j]] = categories[catKeys[j]];
   }
   
   return {
@@ -152,11 +148,7 @@ function reportService_getExpenseBreakdown(params) {
     data: {
       total: Math.round(total),
       count: rows.length,
-      breakdown: breakdown,
-      chart: {
-        labels: breakdown.map(function(r) { return r.category; }),
-        values: breakdown.map(function(r) { return r.amount; })
-      }
+      breakdown: breakdown
     }
   };
 }

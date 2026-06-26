@@ -189,7 +189,10 @@ function expenseService_getExpenses(ss, params) {
     let row = data[i];
     if (row[10] === true || row[10] === "TRUE") continue;
     if (categoryFilter && row[4] !== categoryFilter) continue;
-    if (typeFilter && (row[11] || "REGULAR") !== typeFilter) continue;
+    let expenseType = row[11] || "";
+    if (typeFilter === "COMPANY") {
+      if (expenseType !== "COMPANY" && expenseType !== "") continue;
+    } else if (typeFilter && expenseType !== typeFilter) continue;
     
     results.push({
       expense_id: row[0],
@@ -198,7 +201,7 @@ function expenseService_getExpenses(ss, params) {
       receipt_file_id: row[6],
       created_by: row[7],
       expense_date: row[8],
-      expense_type: row[11] || "REGULAR",
+      expense_type: row[11] || "COMPANY",
       description: row[12] || "",
       vendor: row[13] || ""
     });
