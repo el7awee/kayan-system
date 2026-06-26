@@ -515,14 +515,14 @@
         <!-- ========================================== -->
         <!-- 📌 القائمة الجانبية (Sidebar)              -->
         <!-- ========================================== -->
-        <aside class="sidebar w-full md:w-64 border-l border-border flex flex-col">
-            <div class="header p-5 border-b border-border flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <i class="fa-solid fa-shield-halved text-amber-500 text-xl"></i>
-                    <span class="font-bold tracking-wider">لوحة الكيان</span>
+            <aside class="sidebar w-full md:w-64 border-l border-border flex flex-col">
+                <div class="header p-5 border-b border-border flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <i class="fa-solid fa-shield-halved text-amber-500 text-xl"></i>
+                        <span id="sidebar-greeting" class="font-bold tracking-wider text-sm"></span>
+                    </div>
+                    <span id="badge-role" class="text-[11px] px-2 py-0.5 rounded-full bg-secondary text-secondary border border-border font-mono">Role</span>
                 </div>
-                <span id="badge-role" class="text-[11px] px-2 py-0.5 rounded-full bg-secondary text-secondary border border-border font-mono">Role</span>
-            </div>
             
             <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
                 <button id="nav-dashboard" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition duration-150 font-medium group">
@@ -561,18 +561,8 @@
                 </button>
             </nav>
             
-            <div class="p-4 border-t border-border bg-secondary/40 space-y-3">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 bg-secondary rounded-xl border border-border flex items-center justify-center font-bold" id="user-avatar">U</div>
-                    <div class="truncate">
-                        <p id="txt-user-name" class="text-sm font-semibold truncate">User Name</p>
-                        <p id="txt-user-id" class="text-xs text-muted font-mono truncate">ID: 000</p>
-                    </div>
-                </div>
+            <div class="p-4 border-t border-border bg-secondary/40">
                 <div class="flex gap-2">
-                    <button id="btn-theme-toggle" class="flex-1 py-2 bg-secondary hover:bg-hover border border-border rounded-lg text-xs font-medium transition" title="تبديل الوضع">
-                        <i class="fa-solid fa-moon"></i>
-                    </button>
                     <button id="btn-logout" class="flex-1 py-2 bg-secondary hover:bg-rose-950/40 text-rose-400 border border-border hover:border-rose-900/50 rounded-lg text-xs font-medium transition">
                         <i class="fa-solid fa-arrow-right-from-bracket ml-1"></i> خروج
                     </button>
@@ -589,10 +579,19 @@
             <!-- 📊 شاشة لوحة التحكم (Dashboard)          -->
             <!-- ======================================== -->
             <section id="view-dashboard" class="view-section hidden space-y-5">
-                <div class="flex items-center justify-between">
+                <div class="flex items-center justify-between flex-wrap gap-2">
                     <div>
-                        <h2 class="text-xl font-bold">التقرير اللحظي للأسطول</h2>
+                        <h2 id="dash-greeting" class="text-xl font-bold"></h2>
                         <p class="text-xs text-muted mt-0.5">آخر تحديث: <span id="dash-last-update">—</span></p>
+                    </div>
+                    <div class="flex gap-2 items-center">
+                        <button id="dash-btn-notifications" class="relative w-9 h-9 flex items-center justify-center rounded-xl bg-secondary hover:bg-hover transition border border-border">
+                            <i class="fa-solid fa-bell text-muted"></i>
+                            <span id="dash-notif-badge" class="absolute -top-1 -right-1 text-[9px] bg-rose-500 text-white w-4 h-4 rounded-full flex items-center justify-center hidden">0</span>
+                        </button>
+                        <button id="dash-btn-theme" class="w-9 h-9 flex items-center justify-center rounded-xl bg-secondary hover:bg-hover transition border border-border">
+                            <i id="dash-theme-icon" class="fa-solid fa-moon text-muted"></i>
+                        </button>
                     </div>
                 </div>
                 <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -1392,7 +1391,7 @@
     <!-- 📌 التذييل                                    -->
     <!-- ============================================ -->
     <footer class="bg-secondary py-3 text-center text-[11px] text-muted border-t border-border">
-        منظومة الكيان اللوجستية v6.0 © 2026
+        <span class="font-bold">EL7AWE</span> © 2026 &nbsp;|&nbsp; <i class="fa-solid fa-envelope"></i> El7awee@gmail.com &nbsp;|&nbsp; <i class="fa-solid fa-phone"></i> +201101048842
     </footer>
 
     <script src="frontend/export.js"></script>

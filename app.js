@@ -5,7 +5,7 @@
  */
 
 // ─── 1️⃣ الإعدادات والثوابت العالمية ───
-const BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbxgYpLc87NeQUb-baA8emZ6DWdc6Egx_XaZ0V-w888/exec";
+const BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbwr29orhItSpF9_3Og0Yj4dkBjSzFtPvb4EHcey27IjYVtzSsKXpjff9_EYYjamKekN/exec";
 
 // حالة التطبيق المحلية
 const state = {
@@ -166,6 +166,8 @@ function bindUIEvents() {
     // تسجيل الخروج والوضع
     document.getElementById("btn-logout")?.addEventListener("click", handleLogout);
     document.getElementById("btn-theme-toggle")?.addEventListener("click", toggleTheme);
+    document.getElementById("dash-btn-theme")?.addEventListener("click", toggleTheme);
+    document.getElementById("dash-btn-notifications")?.addEventListener("click", () => switchView("view-notifications"));
 
     // النماذج
     document.getElementById("form-login")?.addEventListener("submit", handleLoginSubmit);
@@ -393,6 +395,7 @@ async function callBackend(action, parameters = {}) {
     const fetchOptions = {
         method: "POST",
         mode: "cors",
+        redirect: "follow",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: body.toString()
     };
@@ -2712,14 +2715,20 @@ function setButtonLoading(buttonElement, isLoading, textContent) {
 
 function setupUserLayout() {
     const roleBadge = document.getElementById("badge-role");
-    const nameTxt = document.getElementById("txt-user-name");
-    const idTxt = document.getElementById("txt-user-id");
-    const avatarTxt = document.getElementById("user-avatar");
+    const greeting = document.getElementById("sidebar-greeting");
+    const dashGreeting = document.getElementById("dash-greeting");
 
     if (roleBadge) roleBadge.innerText = state.user.role || "Guest";
-    if (nameTxt) nameTxt.innerText = state.user.name || "مستخدم";
-    if (idTxt) idTxt.innerText = `ID: ${state.user.id || '---'}`;
-    if (avatarTxt) avatarTxt.innerText = state.user.name ? state.user.name.charAt(0).toUpperCase() : "M";
+
+    const userName = state.user.name || "مستخدم";
+    const hour = new Date().getHours();
+    let timeGreeting = "مرحبًا";
+    if (hour >= 5 && hour < 12) timeGreeting = "صباح الخير";
+    else if (hour >= 12 && hour < 18) timeGreeting = "مساء الخير";
+    else timeGreeting = "مساء الخير";
+    const greetingText = `${timeGreeting}، ${userName}`;
+    if (greeting) greeting.innerText = greetingText;
+    if (dashGreeting) dashGreeting.innerText = greetingText;
 
     const navSettings = document.getElementById("nav-settings");
     if (navSettings) {
@@ -2778,12 +2787,11 @@ function toggleTheme() {
 }
 
 function updateThemeIcon(theme) {
+    const icon = theme === "dark" ? "sun" : "moon";
     const btn = document.getElementById("btn-theme-toggle");
-    if (btn) {
-        btn.innerHTML = theme === "dark" 
-            ? '<i class="fa-solid fa-sun"></i>' 
-            : '<i class="fa-solid fa-moon"></i>';
-    }
+    if (btn) btn.innerHTML = `<i class="fa-solid fa-${icon}"></i>`;
+    const dashBtn = document.getElementById("dash-theme-icon");
+    if (dashBtn) dashBtn.className = `fa-solid fa-${icon} text-muted`;
 }
 
 // ─── 8️⃣ تسجيل الخروج ───
